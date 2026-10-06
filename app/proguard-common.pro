@@ -44,3 +44,8 @@
 -keep class * implements com.google.gson.JsonDeserializer {
   <init>();
 }
+
+# Memory debugger: persistence DTOs are filled by Gson, keep their default constructors
+-keepclassmembers class ru.playsoftware.j2meloader.debugger.DebuggerStore$* {
+  <init>();
+}

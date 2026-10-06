@@ -19,6 +19,8 @@ package javax.microedition.lcdui.event;
 
 import javax.microedition.util.LinkedList;
 
+import ru.playsoftware.j2meloader.debugger.PauseGate;
+
 /**
  * The event queue. A really complicated thing.
  */
@@ -173,6 +175,8 @@ public class EventQueue implements Runnable {
 			running = true;
 
 			while (enabled) {
+				// memory debugger: parks event processing while the game is paused (no-op otherwise)
+				PauseGate.checkpoint();
 
 				Event event;
 				synchronized (queue) {

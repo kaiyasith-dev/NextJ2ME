@@ -68,4 +68,12 @@
             android:title="@string/pref_mascot_title"
             android:summary="@string/pref_mascot_summary" />
     </PreferenceCategory>
+    <PreferenceCategory android:title="@string/pref_category_developer">
+        <SwitchPreferenceCompat
+            android:key="pref_memory_debugger"
+            app:defaultValue="false"
+            android:icon="@drawable/ic_setting_default"
+            android:title="@string/pref_memory_debugger_title"
+            android:summary="@string/pref_memory_debugger_summary" />
+    </PreferenceCategory>
 </androidx.preference.PreferenceScreen>

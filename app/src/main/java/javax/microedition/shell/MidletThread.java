@@ -32,6 +32,7 @@ import javax.microedition.util.ContextHolder;
 import androidx.annotation.NonNull;
 
 import ru.playsoftware.j2meloader.config.Config;
+import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
 
 public class MidletThread extends HandlerThread implements Handler.Callback {
 	private static final String TAG = MidletThread.class.getName();
@@ -50,7 +51,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	private static MidletThread instance;
 	private final MicroLoader microLoader;
 	private final String mainClass;
-	private MIDlet midlet;
+	private volatile MIDlet midlet;
 	private final Handler handler;
 	private int state;
 
@@ -67,7 +68,28 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		instance = new MidletThread(microLoader, mainClass);
 	}
 
+	/** The running MIDlet instance, or null before it was created. Used by the memory debugger. */
+	public static MIDlet getMidlet() {
+		MidletThread t = instance;
+		return t == null ? null : t.midlet;
+	}
+
+	private static void debugState(MemoryDebugger.MidletState s) {
+		MemoryDebugger d = MemoryDebugger.get();
+		if (d != null) {
+			d.onMidletState(s);
+		}
+	}
+
+	private static void debugDestroyed() {
+		MemoryDebugger d = MemoryDebugger.get();
+		if (d != null) {
+			d.onMidletDestroyed();
+		}
+	}
+
 	public static void notifyDestroyed() {
+		debugDestroyed();
 		Thread.setDefaultUncaughtExceptionHandler(uncaughtExceptionHandler);
 		if (instance != null) {
 			instance.state = DESTROYED;
@@ -98,6 +120,8 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	static void destroyApp() {
+		// opens the pause gate so the game can run its own shutdown code
+		debugDestroyed();
 		Thread.setDefaultUncaughtExceptionHandler(uncaughtExceptionHandler);
 		new Thread(() -> {
 			try {
@@ -129,6 +153,10 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 					break;
 				}
 				try {
+					MemoryDebugger debugger = MemoryDebugger.get();
+					if (debugger != null) {
+						debugger.onMidletLoading();
+					}
 					midlet = microLoader.loadMIDlet(this.mainClass);
 					state = PAUSED;
 				} catch (Throwable t) {
@@ -141,6 +169,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 				}
 				try {
 					state = STARTED;
+					debugState(MemoryDebugger.MidletState.RUNNING);
 					midlet.startApp();
 				} catch (MIDletStateChangeException e) {
 					state = PAUSED;
@@ -157,6 +186,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 				try {
 					midlet.pauseApp();
 					state = PAUSED;
+					debugState(MemoryDebugger.MidletState.PAUSED);
 				} catch (Throwable t) {
 					state = DESTROYED;
 					try {

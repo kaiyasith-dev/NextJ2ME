@@ -84,6 +84,9 @@ import ru.playsoftware.j2meloader.BuildConfig;
 import ru.playsoftware.j2meloader.R;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.databinding.ActivityMicroBinding;
+import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
+import ru.playsoftware.j2meloader.debugger.ui.EmulatorBridge;
+import ru.playsoftware.j2meloader.debugger.ui.MemoryDebuggerDialog;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.LogUtils;
 
@@ -171,6 +174,10 @@ public class MicroActivity extends AppCompatActivity {
 			return;
 		}
 		microLoader.applyConfiguration();
+		if (sp.getBoolean(PREF_MEMORY_DEBUGGER, false)) {
+			// developer option, off by default: nothing is created or hooked while it is off
+			EmulatorBridge.install(this, appPath);
+		}
 		VirtualKeyboard vk = ContextHolder.getVk();
 		int orientation = microLoader.getOrientation();
 		if (vk != null) {
@@ -434,6 +441,7 @@ public class MicroActivity extends AppCompatActivity {
 		if (ContextHolder.getVk() == null) {
 			menu.findItem(R.id.action_submenu_vk).setVisible(false);
 		}
+		menu.findItem(R.id.action_memory_debugger).setVisible(MemoryDebugger.get() != null);
 		return true;
 	}
 
@@ -476,6 +484,8 @@ public class MicroActivity extends AppCompatActivity {
 			takeScreenshot();
 		} else if (id == R.id.action_limit_fps) {
 			showLimitFpsDialog();
+		} else if (id == R.id.action_memory_debugger) {
+			MemoryDebuggerDialog.show(this);
 		} else if (ContextHolder.getVk() != null) {
 			// Handled only when virtual keyboard is enabled
 			handleVkOptions(id);

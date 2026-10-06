@@ -79,6 +79,7 @@ import io.reactivex.Single;
 import io.reactivex.schedulers.Schedulers;
 import ru.playsoftware.j2meloader.R;
 import ru.playsoftware.j2meloader.config.ShaderInfo;
+import ru.playsoftware.j2meloader.debugger.PauseGate;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
 public abstract class Canvas extends Displayable {
@@ -650,6 +651,8 @@ public abstract class Canvas extends Displayable {
 	}
 
 	private void limitFps() {
+		// memory debugger: parks the game's render thread while the game is paused (no-op otherwise)
+		PauseGate.checkpoint();
 		if (fpsLimit <= 0) return;
 		try {
 			long millis = (1000 / fpsLimit) - (System.currentTimeMillis() - lastFrameTime);
@@ -696,6 +699,7 @@ public abstract class Canvas extends Displayable {
 	 * and the calling thread is blocked until it is completed.
 	 */
 	public final void serviceRepaints() {
+		PauseGate.checkpoint();
 		Display.getEventQueue().serviceRepaints(paintEvent);
 	}
 

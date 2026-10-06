@@ -32,6 +32,7 @@ import java.io.InputStream;
 import dalvik.system.DexClassLoader;
 import ru.playsoftware.j2meloader.BuildConfig;
 import ru.playsoftware.j2meloader.config.Config;
+import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.IOUtils;
 
@@ -177,6 +178,10 @@ public class AppClassLoader extends DexClassLoader {
 			Class<?> localClass = findClass(name);
 			if (resolve) {
 				resolveClass(localClass);
+			}
+			MemoryDebugger debugger = MemoryDebugger.get();
+			if (debugger != null) {
+				debugger.onClassLoaded(localClass);
 			}
 			return localClass;
 		} catch (ClassNotFoundException e) {

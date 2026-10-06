@@ -104,4 +104,10 @@
     <style name="TextViewVendor" parent="Widget.AppCompat.TextView" >
     </style>
 
+    <!-- Full screen window of the memory debugger dialog -->
+    <style name="AppTheme.DebuggerDialog" parent="AppTheme.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+
 </resources>
