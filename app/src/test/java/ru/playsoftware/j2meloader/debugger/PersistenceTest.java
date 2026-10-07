@@ -50,21 +50,13 @@ public class PersistenceTest extends DebuggerTestBase {
 	}
 
 	@Test
-	public void watchesFreezesCheatsAndNamesSurviveARestart() throws Exception {
+	public void watchesFreezesAndNamesSurviveARestart() throws Exception {
 		MemoryReference path = MemoryReference.path(TestGame.class.getName(), "player",
 				new MemoryReference.Step[]{MemoryReference.Step.field(P, "hp")});
 		dbg.addWatch("Player HP", path, ValueType.INT32, true, StringEncoding.UTF8, 0);
 		dbg.addWatch("Speed", staticRef("speed"), ValueType.FLOAT, true, StringEncoding.UTF8, 0);
 		dbg.addFreeze("Money lock", staticRef("money"), ValueType.INT32, true, StringEncoding.UTF8, 0,
 				val(ValueType.INT32, "999999"), false);
-		MemoryReference inv = MemoryReference.path(TestGame.class.getName(), "inventory",
-				new MemoryReference.Step[]{MemoryReference.Step.index(2)});
-		dbg.addCheat("Infinite HP", staticRef("health"), ValueType.INT32, true, StringEncoding.UTF8, 0,
-				val(ValueType.INT32, "9999"), true, true);
-		dbg.addCheat("Fat slot", inv, ValueType.INT32, true, StringEncoding.UTF8, 0,
-				val(ValueType.INT32, "99"), false, false);
-		dbg.addCheat("Name", staticRef("playerName"), ValueType.STRING, true, StringEncoding.UTF8, 0,
-				val(ValueType.STRING, "Café \"quoted\""), false, false);
 		assertTrue(dbg.saveNow());
 
 		MemoryDebugger again = relaunch();
@@ -78,31 +70,20 @@ public class PersistenceTest extends DebuggerTestBase {
 		assertEquals("Money lock", f.name());
 		assertEquals(999999, f.value().bits);
 		assertFalse(f.isEnabled());
-
-		assertEquals(3, again.cheats().size());
-		MemoryCheat inf = again.cheats().get(0);
-		assertEquals("Infinite HP", inf.name());
-		assertTrue(inf.isFreeze());
-		assertTrue(inf.isEnabled());
-		MemoryCheat fat = again.cheats().get(1);
-		assertEquals(G + "inventory[2]", fat.ref().describe());
-		assertFalse(fat.isFreeze());
-		assertFalse(fat.isEnabled());
-		assertEquals("Café \"quoted\"", again.cheats().get(2).value().text);
 	}
 
 	@Test
-	public void savedFrozenCheatIsAppliedByTheNextRun() throws Exception {
+	public void savedEnabledFreezeIsAppliedByTheNextRun() throws Exception {
 		dbg.setFreezePeriodMs(20);
-		dbg.addCheat("Infinite HP", staticRef("health"), ValueType.INT32, true, StringEncoding.UTF8, 0,
-				val(ValueType.INT32, "4321"), true, true);
+		dbg.addFreeze("Infinite HP", staticRef("health"), ValueType.INT32, true, StringEncoding.UTF8, 0,
+				val(ValueType.INT32, "4321"), true);
 		// destroying the game flushes the per-game data, like the real shutdown does
 		dbg.onMidletDestroyed();
 
 		TestGame.reset();
 		game = new TestGame();
 		dbg = newDebugger();
-		assertTrue("the cheat is enabled again at game start", waitFor(3000, new java.util.concurrent.Callable<Boolean>() {
+		assertTrue("the freeze is enabled again at game start", waitFor(3000, new java.util.concurrent.Callable<Boolean>() {
 			@Override
 			public Boolean call() {
 				return TestGame.health == 4321;
@@ -222,58 +203,5 @@ public class PersistenceTest extends DebuggerTestBase {
 				return storeFile.isFile() && read(storeFile).contains("\"bg\"");
 			}
 		}));
-	}
-
-	// ------------------------------------------------------------ export / import
-
-	@Test
-	public void exportedResultsCanBeImportedInALaterRun() throws Exception {
-		TestGame.player.hp = 100;
-		ScanSession s = first(ScanScope.OBJECTS, ValueType.INT32, ScanMode.EXACT, "100");
-		long n = s.resultCount();
-		assertTrue(n >= 2);
-		File export = new File(storeFile.getParentFile(), "results.json");
-		assertTrue(dbg.exportResults(s, export) > 0);
-		String json = read(export);
-		assertTrue(json, json.contains("\"scope\": \"OBJECTS\""));
-		assertTrue(json, json.contains("player"));
-
-		MemoryDebugger later = relaunch();
-		ScanSession imported = later.importResults(export);
-		assertTrue("entries that resolve come back", imported.resultCount() >= 1);
-		assertEquals(ScanScope.OBJECTS, imported.scope);
-		assertSameName(later, imported, "hp");
-		assertSessionIsActive(later, imported);
-		// the imported session can be filtered like any other
-		TestGame.player.hp = 50;
-		later.runNextScan(params(ScanScope.OBJECTS, ValueType.INT32, ScanMode.DECREASED, ""), null, CancelToken.NEVER);
-		assertEquals(1, imported.resultCount());
-	}
-
-	private static void assertSameName(MemoryDebugger d, ScanSession s, String contains) {
-		boolean found = false;
-		List<MemoryDebugger.ScanResult> rows = d.results(s, 0, 100);
-		for (MemoryDebugger.ScanResult r : rows) {
-			found |= d.describe(r.location).contains(contains);
-		}
-		assertTrue(found);
-	}
-
-	private static void assertSessionIsActive(MemoryDebugger d, ScanSession s) {
-		assertEquals(s, d.activeSession());
-	}
-
-	@Test
-	public void importOfAnUnrelatedFileFailsCleanly() throws Exception {
-		File junk = new File(storeFile.getParentFile(), "junk.json");
-		FileOutputStream out = new FileOutputStream(junk);
-		out.write("[1,2,3]".getBytes(UTF8));
-		out.close();
-		try {
-			dbg.importResults(junk);
-			org.junit.Assert.fail();
-		} catch (java.io.IOException expected) {
-			assertNotNull(expected.getMessage());
-		}
 	}
 }

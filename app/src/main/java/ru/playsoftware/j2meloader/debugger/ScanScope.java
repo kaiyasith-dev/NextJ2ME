@@ -20,13 +20,13 @@ package ru.playsoftware.j2meloader.debugger;
  */
 public enum ScanScope {
 	/** Virtual byte-addressable space built from the game's primitive arrays (big-endian images). */
-	RAW("Raw memory (array bytes)"),
+	RAW("Raw memory"),
 	/** Primitive fields of live objects reachable from the game's roots. */
-	OBJECTS("Java objects (instance fields)"),
+	OBJECTS("Java objects"),
 	/** Non-final static fields of the game's loaded classes. */
 	STATIC_FIELDS("Static fields"),
 	/** Elements of primitive arrays reachable from the game's roots, typed per element. */
-	ARRAYS("Primitive arrays (elements)");
+	ARRAYS("Primitive arrays");
 
 	private final String label;
 

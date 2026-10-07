@@ -14,7 +14,7 @@
 
 package ru.playsoftware.j2meloader.debugger;
 
-/** Per-game debugger preferences that are saved with the game's cheats and watches. */
+/** Per-game debugger preferences that are saved with the game's watches and freezes. */
 public final class DebuggerSettings {
 	/** Last used scan configuration (restored into the Scan tab). */
 	public ScanParams scan = new ScanParams();

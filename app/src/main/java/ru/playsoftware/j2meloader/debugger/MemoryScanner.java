@@ -88,6 +88,8 @@ public final class MemoryScanner {
 		final long targetBits;
 		final byte[] needle;
 		final String text;
+		/** Values of a group scan, or null for a normal scan. */
+		final long[] groupBits;
 		final Progress progress;
 		final CancelToken cancel;
 		final MemorySnapshot snapshot;
@@ -109,6 +111,7 @@ public final class MemoryScanner {
 			this.targetBits = target != null && type.isNumeric() ? target.bits : 0;
 			this.needle = target != null && !type.isNumeric() ? target.rawBytes() : null;
 			this.text = target != null && type == ValueType.STRING ? target.text : null;
+			this.groupBits = p.group ? p.parseGroup() : null;
 			if (needle != null && p.scope == ScanScope.RAW) {
 				matchLength = needle.length;
 			}
@@ -134,7 +137,9 @@ public final class MemoryScanner {
 		}
 
 		private void scanRegion(MemoryRegion r) {
-			if (type.isNumeric()) {
+			if (groupBits != null) {
+				groupRegion(r);
+			} else if (type.isNumeric()) {
 				if (r.isByteAddressable()) {
 					rawNumeric(r);
 				} else {
@@ -219,6 +224,83 @@ public final class MemoryScanner {
 							return;
 						}
 					}
+				}
+			}
+		}
+
+		private void collect(GroupMatcher.IntList[] lists, int pos, long bits) {
+			for (int j = 0; j < groupBits.length; j++) {
+				if (type.valueEquals(bits, groupBits[j])) {
+					lists[j].add(pos);
+				}
+			}
+		}
+
+		/**
+		 * Group scan of one region: notes where each value occurs, then keeps the positions of
+		 * every group of values that sit close together.
+		 */
+		private void groupRegion(MemoryRegion r) {
+			boolean raw = r.isByteAddressable();
+			int step = raw ? p.rawStep() : 1;
+			GroupMatcher.IntList[] lists = new GroupMatcher.IntList[groupBits.length];
+			for (int j = 0; j < lists.length; j++) {
+				lists[j] = new GroupMatcher.IntList();
+			}
+			int[] slots = null;
+			if (raw) {
+				int w = type.width();
+				int size = r.slotCount();
+				if (size < w) {
+					return;
+				}
+				int last = size - w;
+				for (int start = 0; start <= last; start += CHUNK * step) {
+					if (cancel.isCancelled()) {
+						return;
+					}
+					int cnt = Math.min(CHUNK, (last - start) / step + 1);
+					r.readBulk(type, be, start, cnt, step, buf);
+					int base = start / step;
+					for (int k = 0; k < cnt; k++) {
+						collect(lists, base + k, buf[k]);
+					}
+				}
+			} else {
+				slots = r.slotsAccepting(type);
+				if (slots == null) {
+					int n = r.slotCount();
+					for (int start = 0; start < n; start += CHUNK) {
+						if (cancel.isCancelled()) {
+							return;
+						}
+						int cnt = Math.min(CHUNK, n - start);
+						r.readBulk(type, be, start, cnt, 1, buf);
+						for (int k = 0; k < cnt; k++) {
+							collect(lists, start + k, buf[k]);
+						}
+					}
+				} else {
+					for (int idx = 0; idx < slots.length; idx++) {
+						collect(lists, idx, r.readRaw(slots[idx], type, be));
+					}
+				}
+			}
+			// the fields of one object or class belong together by definition: no window there
+			boolean fields = !raw && r.kind() != MemoryRegion.Kind.ARRAY;
+			int window = fields ? Integer.MAX_VALUE : p.groupWindow;
+			GroupMatcher.IntList hits = GroupMatcher.match(lists, window, p.groupOrdered && !fields);
+			if (hits.size == 0) {
+				return;
+			}
+			int[] positions = hits.sortedUnique();
+			MemorySnapshot.Block b = null;
+			for (int pos : positions) {
+				int slot = raw ? pos * step : slots != null ? slots[pos] : pos;
+				long value = r.readRaw(slot, type, be);
+				b = block(b, r, positions.length);
+				if (!add(b, slot, value, null)) {
+					return;
 				}
 			}
 		}

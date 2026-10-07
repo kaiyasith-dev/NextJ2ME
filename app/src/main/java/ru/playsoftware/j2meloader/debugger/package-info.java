@@ -34,14 +34,14 @@
  *
  * <h2>Layers</h2>
  * <pre>
- * MemoryDebugger        facade: lifecycle, sessions, read/write, watches, freezes, cheats, persistence
+ * MemoryDebugger        facade: lifecycle, sessions, read/write, watches, freezes, persistence
  *   MemoryScanner       first scan + snapshot based filtering (MemorySnapshot / ScanSession)
  *   MemoryProvider      per scope source of MemoryRegion (static, object, array, raw)
  *     VmInspector       reflection walk of the object graph, path finding, reference resolution
  *       MemoryRegion    FieldRegion / ArrayRegion: typed or byte addressable view, weakly referenced
  *   FreezeEngine        single low-rate timer thread, alive only while something is enforced
  *   PauseGate           cooperative pause: game threads park at render / event checkpoints
- *   DebuggerStore       per-game JSON (watches, freezes, cheats, settings) - never scan results
+ *   DebuggerStore       per-game JSON (watches, freezes, settings) - never scan results
  * </pre>
  * The core has no Android dependency; {@code ui.EmulatorBridge} is the only class that knows the
  * emulator (roots and "what is a game class") and {@code ui.MemoryDebuggerDialog} is the UI.

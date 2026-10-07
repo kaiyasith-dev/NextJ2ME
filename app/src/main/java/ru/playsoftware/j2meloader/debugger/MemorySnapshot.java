@@ -126,8 +126,4 @@ public final class MemorySnapshot {
 		return out;
 	}
 
-	/** Distinct regions that still hold candidates. */
-	public int regionCount() {
-		return blocks.size();
-	}
 }

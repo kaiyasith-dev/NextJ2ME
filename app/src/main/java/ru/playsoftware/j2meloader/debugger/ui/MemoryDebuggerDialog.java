@@ -14,8 +14,10 @@
 
 package ru.playsoftware.j2meloader.debugger.ui;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.Dialog;
-import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -24,6 +26,7 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -32,6 +35,7 @@ import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,21 +47,19 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.DialogFragment;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
 import ru.playsoftware.j2meloader.R;
 import ru.playsoftware.j2meloader.databinding.DialogMemoryDebuggerBinding;
 import ru.playsoftware.j2meloader.debugger.AddressSpace;
-import ru.playsoftware.j2meloader.debugger.MemoryCheat;
 import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
 import ru.playsoftware.j2meloader.debugger.MemoryFreeze;
 import ru.playsoftware.j2meloader.debugger.MemoryLocation;
+import ru.playsoftware.j2meloader.debugger.MemoryRegion;
 import ru.playsoftware.j2meloader.debugger.MemoryReference;
 import ru.playsoftware.j2meloader.debugger.MemoryTarget;
 import ru.playsoftware.j2meloader.debugger.MemoryValue;
@@ -82,12 +84,17 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 	private static final int TAB_MEMORY = 1;
 	private static final int TAB_WATCH = 2;
 	private static final int TAB_FROZEN = 3;
-	private static final int TAB_CHEATS = 4;
 
 	private static final int RESULT_PAGE = 50;
 	private static final int ROW_BYTES = 8;
 	private static final int ROWS = 32;
 	private static final int PAGE_BYTES = ROW_BYTES * ROWS;
+	/** Rows added each time "Show more" is pressed in list mode. */
+	private static final int LIST_ROWS = 64;
+	/** Most rows shown at once; beyond this the window slides instead of growing. */
+	private static final int LIST_MAX_ROWS = 1024;
+	/** Rows shown above the selected value when a value is opened. */
+	private static final int LIST_CONTEXT = 8;
 	private static final long REFRESH_MS = 500;
 	private static final int SELECTED_BG = 0x44808080;
 
@@ -96,6 +103,11 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 	private static final ScanMode[] MODES = ScanMode.values();
 	private static final StringEncoding[] ENCODINGS = StringEncoding.values();
 	private static final int[] ALIGNMENTS = {0, 1, 2, 4, 8};
+	/** Types the memory view can read and edit at the selected byte. */
+	private static final ValueType[] VIEW_TYPES = {
+			ValueType.INT8, ValueType.UINT8, ValueType.INT16, ValueType.UINT16, ValueType.INT32,
+			ValueType.UINT32, ValueType.INT64, ValueType.UINT64, ValueType.FLOAT, ValueType.DOUBLE,
+			ValueType.BOOLEAN, ValueType.STRING};
 
 	/** Opens the debugger over the running game. */
 	public static void show(AppCompatActivity activity) {
@@ -130,6 +142,20 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 	}
 
+	private static final class ListRow {
+		final View view;
+		final TextView title;
+		final TextView sub;
+		final TextView value;
+
+		ListRow(View view, TextView title, TextView sub, TextView value) {
+			this.view = view;
+			this.title = title;
+			this.sub = sub;
+			this.value = value;
+		}
+	}
+
 	private static final class TargetRow {
 		final MemoryTarget target;
 		final TextView value;
@@ -160,14 +186,40 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 	private MemoryDebugger.ViewTarget view;
 	private int pageStart;
 	private int selOffset = -1;
+	private ValueType viewType = ValueType.INT32;
+	private int viewLength = 8;
 	private TextView[] addrViews;
 	private TextView[] byteViews;
 	private TextView[] asciiViews;
+	private boolean listMode = true;
+	private final List<ListRow> listRowViews = new ArrayList<>();
+	/** Offset of the first value shown in list mode, and how many values are shown. */
+	private int listStart;
+	private int listCount = LIST_ROWS;
 
 	// lists
 	private final List<TargetRow> watchRows = new ArrayList<>();
 	private final List<TargetRow> frozenRows = new ArrayList<>();
-	private final List<TargetRow> cheatRows = new ArrayList<>();
+
+	// the tab bar hides while scrolling down and returns when scrolling up
+	private boolean tabBarShown = true;
+	private boolean tabBarAnimating;
+	private int tabBarFullHeight;
+	private int lastScrollY;
+	private int scrollDownAccum;
+	private ViewTreeObserver scrollObserver;
+	private final ViewTreeObserver.OnScrollChangedListener scrollListener =
+			new ViewTreeObserver.OnScrollChangedListener() {
+				@Override
+				public void onScrollChanged() {
+					onContentScrolled();
+				}
+			};
+
+	private static final int TAB_BG_CURRENT = 0xFF000000;
+	private static final int TAB_BG_OTHER = 0xFF3C3C3C;
+
+	private TextView[] tabButtons;
 
 	private final Runnable ticker = new Runnable() {
 		@Override
@@ -226,7 +278,6 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		setupHeader();
 		setupScanPane();
 		setupMemoryPane();
-		setupSelectedPanel();
 		setupFrozenPane();
 		showTab(TAB_SCAN);
 	}
@@ -239,6 +290,8 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			d.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
 		}
 		if (dbg != null && b != null) {
+			scrollObserver = b.getRoot().getViewTreeObserver();
+			scrollObserver.addOnScrollChangedListener(scrollListener);
 			dbg.addListener(this);
 			structural.run();
 			main.removeCallbacks(ticker);
@@ -248,6 +301,10 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	@Override
 	public void onStop() {
+		if (scrollObserver != null && scrollObserver.isAlive()) {
+			scrollObserver.removeOnScrollChangedListener(scrollListener);
+		}
+		scrollObserver = null;
 		main.removeCallbacks(ticker);
 		main.removeCallbacks(structural);
 		if (dbg != null) {
@@ -261,15 +318,6 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		b = null;
 		resultRows.clear();
 		super.onDestroyView();
-	}
-
-	@Override
-	public void onDismiss(@NonNull DialogInterface dialog) {
-		super.onDismiss(dialog);
-		// closing the debugger never leaves the game frozen
-		if (dbg != null) {
-			dbg.resumeGame();
-		}
 	}
 
 	/** Debugger notification, any thread. */
@@ -347,27 +395,99 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		return t == ValueType.BYTES || t == ValueType.STRING;
 	}
 
-	private static String fmt(MemoryValue v) {
-		return v == null ? "?" : v.format();
-	}
-
 	// ================================================================== header and tabs
 
 	private void setupHeader() {
 		b.btnClose.setOnClickListener(v -> dismiss());
-		b.btnPause.setOnClickListener(v -> {
-			dbg.pauseGame();
-			updateHeader();
-		});
-		b.btnResume.setOnClickListener(v -> {
-			dbg.resumeGame();
-			updateHeader();
-		});
 		b.tabScan.setOnClickListener(v -> showTab(TAB_SCAN));
 		b.tabMemory.setOnClickListener(v -> showTab(TAB_MEMORY));
 		b.tabWatch.setOnClickListener(v -> showTab(TAB_WATCH));
 		b.tabFrozen.setOnClickListener(v -> showTab(TAB_FROZEN));
-		b.tabCheats.setOnClickListener(v -> showTab(TAB_CHEATS));
+		tabButtons = new TextView[]{b.tabScan, b.tabMemory, b.tabWatch, b.tabFrozen};
+	}
+
+	private ScrollView scrollViewForTab(int t) {
+		switch (t) {
+			case TAB_MEMORY:
+				return b.paneMemory;
+			case TAB_WATCH:
+				return b.paneWatch;
+			case TAB_FROZEN:
+				return b.paneFrozen;
+			default:
+				return b.paneScan;
+		}
+	}
+
+	/** Hides the tab bar after scrolling down a bit, shows it on any scroll up or at the top. */
+	private void onContentScrolled() {
+		if (b == null || tabBarAnimating) {
+			return;
+		}
+		ScrollView sv = scrollViewForTab(tab);
+		View content = sv.getChildAt(0);
+		if (content == null) {
+			return;
+		}
+		int y = sv.getScrollY();
+		int dy = y - lastScrollY;
+		lastScrollY = y;
+		if (tabBarShown) {
+			scrollDownAccum = dy > 0 ? scrollDownAccum + dy : 0;
+			int full = b.tabBar.getHeight();
+			// only hide when there is clearly more to scroll than the bar takes: the bar leaving
+			// makes the area taller, and a short list could otherwise bounce back and forth
+			boolean enoughToScroll = content.getHeight() - sv.getHeight() > 2 * full;
+			if (scrollDownAccum > dp(24) && y > full && enoughToScroll) {
+				tabBarFullHeight = full;
+				setTabBarVisible(false, true);
+			}
+		} else if (dy < -dp(6) || y <= 0) {
+			setTabBarVisible(true, true);
+		}
+	}
+
+	private void setTabBarVisible(boolean visible, boolean animate) {
+		if (b == null || visible == tabBarShown) {
+			return;
+		}
+		tabBarShown = visible;
+		final LinearLayout bar = b.tabBar;
+		final ViewGroup.LayoutParams lp = bar.getLayoutParams();
+		final int full = tabBarFullHeight > 0 ? tabBarFullHeight : bar.getHeight();
+		if (!animate) {
+			lp.height = visible ? ViewGroup.LayoutParams.WRAP_CONTENT : 0;
+			bar.setVisibility(visible ? View.VISIBLE : View.GONE);
+			bar.setLayoutParams(lp);
+			return;
+		}
+		bar.setVisibility(View.VISIBLE);
+		tabBarAnimating = true;
+		ValueAnimator animator = ValueAnimator.ofInt(visible ? 0 : full, visible ? full : 0);
+		animator.setDuration(150);
+		animator.addUpdateListener(a -> {
+			lp.height = (Integer) a.getAnimatedValue();
+			bar.setLayoutParams(lp);
+		});
+		animator.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				if (b == null) {
+					return;
+				}
+				if (visible) {
+					lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+				} else {
+					bar.setVisibility(View.GONE);
+				}
+				bar.setLayoutParams(lp);
+				// the resize may have moved the scroll position; do not treat that as user input
+				lastScrollY = scrollViewForTab(tab).getScrollY();
+				scrollDownAccum = 0;
+				tabBarAnimating = false;
+			}
+		});
+		animator.start();
 	}
 
 	private void showTab(int t) {
@@ -376,11 +496,16 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		b.paneMemory.setVisibility(t == TAB_MEMORY ? View.VISIBLE : View.GONE);
 		b.paneWatch.setVisibility(t == TAB_WATCH ? View.VISIBLE : View.GONE);
 		b.paneFrozen.setVisibility(t == TAB_FROZEN ? View.VISIBLE : View.GONE);
-		b.paneCheats.setVisibility(t == TAB_CHEATS ? View.VISIBLE : View.GONE);
-		b.panelSelected.setVisibility(t == TAB_SCAN || t == TAB_MEMORY ? View.VISIBLE : View.GONE);
-		View[] tabs = {b.tabScan, b.tabMemory, b.tabWatch, b.tabFrozen, b.tabCheats};
-		for (int i = 0; i < tabs.length; i++) {
-			tabs[i].setAlpha(i == t ? 1f : 0.55f);
+		setTabBarVisible(true, false);
+		lastScrollY = scrollViewForTab(t).getScrollY();
+		scrollDownAccum = 0;
+		// tabs look like buttons with white text: the current one is black, the others dark grey
+		for (int i = 0; i < tabButtons.length; i++) {
+			boolean current = i == t;
+			tabButtons[i].setBackgroundColor(current ? TAB_BG_CURRENT : TAB_BG_OTHER);
+			tabButtons[i].setTextColor(Color.WHITE);
+			tabButtons[i].setTypeface(null, current ? Typeface.BOLD : Typeface.NORMAL);
+			tabButtons[i].setAlpha(current ? 1f : 0.75f);
 		}
 		renderTargets();
 		refreshVisible();
@@ -390,12 +515,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		if (b == null || dbg == null) {
 			return;
 		}
-		boolean paused = dbg.isGamePaused();
-		String run = paused ? getString(R.string.memdbg_state_parked, dbg.parkedThreads())
-				: getString(R.string.memdbg_state_running);
-		b.stateText.setText(dbg.statsText() + " · " + run);
-		b.btnPause.setEnabled(!paused);
-		b.btnResume.setEnabled(paused);
+		b.stateText.setText(dbg.statsText());
 		String note = dbg.invalidationNote();
 		if (note != null && shownGeneration != dbg.generation()) {
 			shownGeneration = dbg.generation();
@@ -458,19 +578,23 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		b.checkBigEndian.setChecked(p.bigEndian);
 		b.checkPauseScan.setChecked(p.pauseDuringScan);
 		b.editValue.setText(p.value);
+		b.checkGroup.setChecked(p.group);
+		b.editGroupWindow.setText(String.valueOf(p.groupWindow));
+		b.checkGroupOrdered.setChecked(p.groupOrdered);
+		b.checkGroup.setOnCheckedChangeListener((button, checked) -> {
+			if (checked) {
+				// a group scan is always an exact-value scan
+				b.spinMode.setSelection(ScanMode.EXACT.ordinal());
+			}
+			updateValueField();
+		});
 		updateValueField();
 
 		b.btnNewScan.setOnClickListener(v -> startScan(true));
 		b.btnNextScan.setOnClickListener(v -> startScan(false));
-		b.btnResetScan.setOnClickListener(v -> {
-			dbg.resetScan();
-			resultLimit = RESULT_PAGE;
-			b.scanStatus.setText("");
-		});
+		b.btnResetScan.setOnClickListener(v -> confirmReset());
 		b.btnCancelScan.setOnClickListener(v -> dbg.cancelScan());
 		b.btnHistory.setOnClickListener(v -> showHistory());
-		b.btnExport.setOnClickListener(v -> exportScan());
-		b.btnImport.setOnClickListener(v -> importScan());
 		b.btnMoreResults.setOnClickListener(v -> {
 			resultLimit += RESULT_PAGE;
 			renderResults();
@@ -484,9 +608,12 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 		ScanMode mode = MODES[b.spinMode.getSelectedItemPosition()];
 		ValueType type = TYPES[b.spinType.getSelectedItemPosition()];
-		b.editValue.setVisibility(mode.needsValue() ? View.VISIBLE : View.GONE);
-		b.editValue.setHint(type == ValueType.BYTES ? R.string.memdbg_value_hint_bytes
+		boolean group = b.checkGroup.isChecked() && type.isNumeric();
+		b.editValue.setVisibility(mode.needsValue() || group ? View.VISIBLE : View.GONE);
+		b.editValue.setHint(group ? R.string.memdbg_group_hint
+				: type == ValueType.BYTES ? R.string.memdbg_value_hint_bytes
 				: type == ValueType.STRING ? R.string.memdbg_value_hint_text : R.string.memdbg_value);
+		b.groupOptions.setVisibility(b.checkGroup.isChecked() ? View.VISIBLE : View.GONE);
 	}
 
 	private ScanParams readScanParams() {
@@ -499,6 +626,13 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		p.alignment = ALIGNMENTS[b.spinAlignment.getSelectedItemPosition()];
 		p.encoding = ENCODINGS[b.spinEncoding.getSelectedItemPosition()];
 		p.pauseDuringScan = b.checkPauseScan.isChecked();
+		p.group = b.checkGroup.isChecked();
+		p.groupOrdered = b.checkGroupOrdered.isChecked();
+		try {
+			p.groupWindow = Integer.parseInt(b.editGroupWindow.getText().toString().trim());
+		} catch (NumberFormatException e) {
+			p.groupWindow = ScanParams.DEFAULT_GROUP_WINDOW;
+		}
 		return p;
 	}
 
@@ -514,6 +648,13 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			return;
 		}
 		ScanParams p = readScanParams();
+		if (!first) {
+			if (p.value.contains(";")) {
+				toast(R.string.memdbg_group_new_only);
+				return;
+			}
+			p.group = false; // groups only start a scan; the next scans filter its results
+		}
 		setScanning(true);
 		b.scanStatus.setText(getString(R.string.memdbg_scanning, 0L, 0L));
 		MemoryDebugger.ScanListener listener = new MemoryDebugger.ScanListener() {
@@ -598,7 +739,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				sel = i;
 			}
 		}
-		b.spinSession.setVisibility(sessions.isEmpty() ? View.GONE : View.VISIBLE);
+		b.sessionRow.setVisibility(sessions.isEmpty() ? View.GONE : View.VISIBLE);
 		if (sessions.isEmpty()) {
 			return;
 		}
@@ -613,99 +754,61 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		});
 	}
 
-	private void showHistory() {
-		ScanSession s = dbg.activeSession();
-		StringBuilder sb = new StringBuilder();
-		if (s != null) {
-			int i = 1;
-			for (ScanSession.Step step : s.history()) {
-				sb.append(i++).append(". ").append(step).append('\n');
-			}
-		}
-		new AlertDialog.Builder(requireContext())
-				.setTitle(R.string.memdbg_history)
-				.setMessage(sb.length() == 0 ? getString(R.string.memdbg_history_empty) : sb.toString().trim())
-				.setPositiveButton(android.R.string.ok, null)
-				.show();
-	}
-
-	private File scansDir() {
-		File store = dbg.storeFile();
-		return store == null ? null : new File(store.getParentFile(), "scans");
-	}
-
-	private String appId() {
-		File store = dbg.storeFile();
-		if (store == null) {
-			return "game";
-		}
-		String n = store.getName();
-		return n.endsWith(".json") ? n.substring(0, n.length() - 5) : n;
-	}
-
-	private void exportScan() {
-		final ScanSession s = dbg.activeSession();
-		File dir = scansDir();
-		if (s == null || dir == null) {
-			toast(R.string.memdbg_no_scan);
+	/** Resetting throws away the results and the history, so it needs a confirmation. */
+	private void confirmReset() {
+		if (dbg.activeSession() == null) {
+			b.scanStatus.setText(R.string.memdbg_no_scan);
 			return;
 		}
-		final File file = new File(dir, appId() + "-scan" + s.id + "-" + System.currentTimeMillis() + ".json");
-		dbg.runAsync(() -> {
-			try {
-				int n = dbg.exportResults(s, file);
-				main.post(() -> toast(getString(R.string.memdbg_exported, n, file.getName())));
-			} catch (IOException | RuntimeException e) {
-				main.post(() -> toast(String.valueOf(e.getMessage())));
-			}
-		});
-	}
-
-	private void importScan() {
-		File dir = scansDir();
-		File[] files = dir == null ? null : dir.listFiles();
-		final List<File> mine = new ArrayList<>();
-		if (files != null) {
-			for (File f : files) {
-				if (f.getName().startsWith(appId() + "-scan") && f.getName().endsWith(".json")) {
-					mine.add(f);
-				}
-			}
-		}
-		if (mine.isEmpty()) {
-			toast(R.string.memdbg_import_none);
-			return;
-		}
-		Collections.sort(mine, new Comparator<File>() {
-			@Override
-			public int compare(File a, File c) {
-				return Long.compare(c.lastModified(), a.lastModified());
-			}
-		});
-		String[] names = new String[mine.size()];
-		for (int i = 0; i < names.length; i++) {
-			names[i] = mine.get(i).getName();
-		}
 		new AlertDialog.Builder(requireContext())
-				.setTitle(R.string.memdbg_import)
-				.setItems(names, (d, which) -> {
-					final File file = mine.get(which);
-					dbg.runAsync(() -> {
-						try {
-							ScanSession s = dbg.importResults(file);
-							main.post(() -> {
-								resultLimit = RESULT_PAGE;
-								shownSession = null;
-								syncResultsWithSession();
-								refreshSessions();
-								toast(getString(R.string.memdbg_imported, (int) s.resultCount()));
-							});
-						} catch (IOException | RuntimeException e) {
-							main.post(() -> toast(String.valueOf(e.getMessage())));
-						}
-					});
+				.setTitle(R.string.memdbg_reset_confirm_title)
+				.setMessage(R.string.memdbg_reset_confirm_message)
+				.setPositiveButton(R.string.memdbg_reset_scan, (d, w) -> {
+					dbg.resetScan();
+					resultLimit = RESULT_PAGE;
+					b.scanStatus.setText("");
 				})
+				.setNegativeButton(android.R.string.cancel, null)
 				.show();
+	}
+
+	/** Lists the steps of the active scan; choosing one goes back to the results it had. */
+	private void showHistory() {
+		final ScanSession s = dbg.activeSession();
+		if (s == null || s.history().isEmpty()) {
+			toast(R.string.memdbg_history_empty);
+			return;
+		}
+		final List<ScanSession.Step> steps = s.history();
+		String[] items = new String[steps.size()];
+		for (int i = 0; i < items.length; i++) {
+			ScanSession.Step step = steps.get(i);
+			String mark = i == items.length - 1 ? "  \u2190 " + getString(R.string.memdbg_history_now)
+					: step.isRestorable() ? "" : "  (" + getString(R.string.memdbg_history_not_kept) + ")";
+			items[i] = (i + 1) + ". " + step + mark;
+		}
+		new AlertDialog.Builder(requireContext())
+				.setTitle(R.string.memdbg_history_title)
+				.setItems(items, (d, which) -> restoreStep(s, which, steps.size()))
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	private void restoreStep(ScanSession s, int index, int stepCount) {
+		if (index == stepCount - 1) {
+			return; // already the current results
+		}
+		try {
+			dbg.restoreScanStep(s, index);
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			toast(String.valueOf(e.getMessage()));
+			return;
+		}
+		resultLimit = RESULT_PAGE;
+		shownSession = null;
+		syncResultsWithSession();
+		refreshSessions();
+		toast(getString(R.string.memdbg_history_restored, index + 1, (int) s.resultCount()));
 	}
 
 	// ------------------------------------------------------------------ results
@@ -744,7 +847,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			title.setText(dbg.describe(r.location));
 			subtitle.setText(dbg.describeDetail(r.location));
 			final MemoryLocation loc = r.location;
-			row.setOnClickListener(v -> select(loc));
+			row.setOnClickListener(v -> showLocationMenu(loc));
 			b.resultsContainer.addView(row);
 			resultRows.add(new ResultRow(loc, r.previous, row, value));
 		}
@@ -772,107 +875,120 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 	}
 
-	// ================================================================== selected value panel
+	// ================================================================== value pop-up
 
-	private void setupSelectedPanel() {
-		List<String> types = new ArrayList<>();
-		for (ValueType t : TYPES) {
-			types.add(t.label());
-		}
-		bind(b.spinSelType, types, ValueType.INT32.ordinal(), pos -> {
-			if (updatingUi || selected == null || selected.scope != ScanScope.RAW) {
-				return;
-			}
-			ValueType t = TYPES[pos];
-			if (t == selected.type) {
-				return;
-			}
-			int len = isOpaque(t) ? (selected.length > 0 ? selected.length : 4) : 0;
-			selected = selected.withType(t, len);
-			showSelectedValue(false);
-		});
-		b.btnRead.setOnClickListener(v -> readSelected());
-		b.btnWrite.setOnClickListener(v -> writeSelected());
-		b.btnFreeze.setOnClickListener(v -> freezeSelected());
-		b.btnWatch.setOnClickListener(v -> watchSelected());
-		b.btnCheat.setOnClickListener(v -> cheatSelected());
-		b.btnViewer.setOnClickListener(v -> viewSelected());
-		select(null);
-	}
-
+	/** Remembers the selection (used by the pop-up and highlighted in the results list). */
 	private void select(@Nullable MemoryLocation loc) {
 		selected = loc;
-		boolean has = loc != null;
-		b.btnRead.setEnabled(has);
-		b.btnWrite.setEnabled(has);
-		b.btnFreeze.setEnabled(has);
-		b.btnWatch.setEnabled(has);
-		b.btnCheat.setEnabled(has);
-		b.btnViewer.setEnabled(has);
-		b.spinSelType.setEnabled(has && loc.scope == ScanScope.RAW);
-		if (!has) {
-			b.selectedTitle.setText(R.string.memdbg_nothing_selected);
-			b.selectedDetail.setText("");
-			b.btnFreeze.setText(R.string.memdbg_freeze);
-		} else {
-			b.selectedTitle.setText(dbg.describe(loc));
-			b.selectedDetail.setText(dbg.describeDetail(loc));
-			updatingUi = true;
-			b.spinSelType.setSelection(loc.type.ordinal(), false);
-			updatingUi = false;
-			showSelectedValue(true);
-		}
 		highlightSelection();
 	}
 
-	/** Reads the selection and shows it as the detail line (and, optionally, in the edit box). */
-	private void showSelectedValue(boolean fillEditor) {
-		if (selected == null) {
-			return;
+	/**
+	 * Pop-up with everything that can be done with a value found by a scan or selected in the
+	 * memory view: edit it, freeze it, watch it, show it in the memory view, change its type.
+	 */
+	private void showLocationMenu(final MemoryLocation loc) {
+		select(loc);
+		MemoryValue cur = dbg.read(loc);
+		final String curText = cur == null ? "" : cur.format();
+		String title = dbg.describe(loc) + "\n" + dbg.describeDetail(loc) + " \u00b7 "
+				+ (cur == null ? getString(R.string.memdbg_unavailable) : curText);
+		final boolean raw = loc.scope == ScanScope.RAW;
+		List<String> labels = new ArrayList<>();
+		labels.add(getString(R.string.memdbg_edit_value));
+		labels.add(getString(R.string.memdbg_freeze));
+		labels.add(getString(R.string.memdbg_watch));
+		labels.add(getString(R.string.memdbg_open_in_memory));
+		if (raw) {
+			labels.add(getString(R.string.memdbg_change_type));
 		}
-		MemoryValue v = dbg.read(selected);
-		String shown = v == null ? getString(R.string.memdbg_unavailable) : v.format();
-		b.selectedDetail.setText(dbg.describeDetail(selected) + " · " + shown);
-		if (fillEditor) {
-			b.editNewValue.setText(v == null ? "" : v.format());
-			b.editNewValue.setSelection(b.editNewValue.getText().length());
-		}
+		new AlertDialog.Builder(requireContext())
+				.setTitle(title)
+				.setItems(labels.toArray(new String[0]), (d, which) -> {
+					switch (which) {
+						case 0:
+							prompt(R.string.memdbg_edit_value, curText, text -> writeLocation(loc, text));
+							break;
+						case 1:
+							prompt(R.string.memdbg_freeze, curText, text -> freezeAt(loc, text));
+							break;
+						case 2:
+							watchLocation(loc);
+							break;
+						case 3:
+							openInViewer(loc);
+							break;
+						default:
+							chooseLocationType(loc);
+					}
+				})
+				.show();
 	}
 
-	private void readSelected() {
-		if (selected == null) {
-			return;
-		}
-		MemoryValue v = dbg.read(selected);
-		showSelectedValue(true);
-		toast(v == null ? getString(R.string.memdbg_unavailable)
-				: getString(R.string.memdbg_read_value, v.format()));
+	/** The location with its byte length set from the value, for text and byte sequences in raw memory. */
+	private static MemoryLocation sized(MemoryLocation loc, MemoryValue v) {
+		return loc.scope == ScanScope.RAW && isOpaque(loc.type) ? loc.withType(loc.type, v.byteLength()) : loc;
 	}
 
-	private void writeSelected() {
-		if (selected == null) {
-			return;
-		}
+	private void writeLocation(MemoryLocation base, String text) {
 		try {
-			MemoryValue v = MemoryValue.parse(selected.type, b.editNewValue.getText().toString(),
-					selected.encoding);
-			MemoryLocation loc = selected;
-			if (selected.scope == ScanScope.RAW && isOpaque(selected.type)) {
-				loc = selected.withType(selected.type, v.byteLength());
-			}
+			MemoryValue v = MemoryValue.parse(base.type, text, base.encoding);
+			MemoryLocation loc = sized(base, v);
 			MemoryValue back = dbg.write(loc, v);
-			selected = loc;
+			select(loc);
 			toast(getString(R.string.memdbg_written, back.format()));
 		} catch (IllegalArgumentException e) {
 			toast(String.valueOf(e.getMessage()));
 		} catch (UnavailableException e) {
 			toast(R.string.memdbg_unavailable);
 		}
-		showSelectedValue(false);
 		refreshResultValues();
 		if (tab == TAB_MEMORY) {
 			renderPage();
 		}
+	}
+
+	private void freezeAt(MemoryLocation base, String text) {
+		final MemoryLocation loc;
+		final MemoryValue value;
+		try {
+			value = MemoryValue.parse(base.type, text, base.encoding);
+			loc = sized(base, value);
+		} catch (IllegalArgumentException e) {
+			toast(String.valueOf(e.getMessage()));
+			return;
+		}
+		resolveReference(loc, ref -> {
+			MemoryFreeze existing = dbg.findFreeze(ref);
+			if (existing != null) {
+				dbg.removeFreeze(existing); // freezing again replaces the old value
+			}
+			dbg.addFreeze(dbg.describe(loc), ref, loc.type, loc.bigEndian, loc.encoding, loc.length, value, true);
+			toast(getString(R.string.memdbg_frozen_at, value.format()));
+		});
+	}
+
+	private void watchLocation(final MemoryLocation loc) {
+		prompt(R.string.memdbg_name, dbg.describe(loc), name ->
+				resolveReference(loc, ref -> {
+					dbg.addWatch(name, loc, ref);
+					toast(R.string.memdbg_added);
+				}));
+	}
+
+	private void chooseLocationType(final MemoryLocation loc) {
+		String[] labels = new String[TYPES.length];
+		for (int i = 0; i < TYPES.length; i++) {
+			labels[i] = TYPES[i].label();
+		}
+		new AlertDialog.Builder(requireContext())
+				.setTitle(R.string.memdbg_change_type)
+				.setItems(labels, (d, which) -> {
+					ValueType t = TYPES[which];
+					int len = isOpaque(t) ? (loc.length > 0 ? loc.length : 4) : 0;
+					showLocationMenu(loc.withType(t, len));
+				})
+				.show();
 	}
 
 	private void resolveReference(final MemoryLocation loc, final RefCallback cb) {
@@ -900,131 +1016,168 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		});
 	}
 
-	private MemoryValue valueToApply(MemoryLocation loc) {
-		String text = b.editNewValue.getText().toString();
-		MemoryValue v = MemoryValue.parse(loc.type, text, loc.encoding);
-		return v;
+	/** Jumps to the memory view at the location of a watch or freeze. */
+	private void openInViewer(MemoryTarget t) {
+		MemoryLocation loc = dbg.locate(t);
+		if (loc == null) {
+			toast(R.string.memdbg_unavailable);
+			return;
+		}
+		openInViewer(loc);
 	}
 
-	private void freezeSelected() {
-		if (selected == null) {
-			return;
-		}
-		final MemoryLocation loc;
-		final MemoryValue value;
-		try {
-			MemoryValue parsed = valueToApply(selected);
-			loc = selected.scope == ScanScope.RAW && isOpaque(selected.type)
-					? selected.withType(selected.type, parsed.byteLength()) : selected;
-			value = parsed;
-		} catch (IllegalArgumentException e) {
-			toast(String.valueOf(e.getMessage()));
-			return;
-		}
-		resolveReference(loc, ref -> {
-			MemoryFreeze existing = dbg.findFreeze(ref);
-			if (existing != null && existing.isEnabled()) {
-				dbg.removeFreeze(existing);
-				b.btnFreeze.setText(R.string.memdbg_freeze);
-				toast(R.string.memdbg_unfreeze);
-				return;
-			}
-			if (existing != null) {
-				dbg.removeFreeze(existing);
-			}
-			dbg.addFreeze(dbg.describe(loc), ref, loc.type, loc.bigEndian, loc.encoding, loc.length, value, true);
-			b.btnFreeze.setText(R.string.memdbg_freeze_on);
-			toast(getString(R.string.memdbg_frozen_at, value.format()));
-		});
-	}
-
-	private void watchSelected() {
-		if (selected == null) {
-			return;
-		}
-		final MemoryLocation loc = selected;
-		prompt(R.string.memdbg_name, dbg.describe(loc), name ->
-				resolveReference(loc, ref -> {
-					dbg.addWatch(name, loc, ref);
-					toast(R.string.memdbg_added);
-				}));
-	}
-
-	private void cheatSelected() {
-		if (selected == null) {
-			return;
-		}
-		final MemoryLocation base = selected;
-		final MemoryValue value;
-		final MemoryLocation loc;
-		try {
-			value = valueToApply(base);
-			loc = base.scope == ScanScope.RAW && isOpaque(base.type)
-					? base.withType(base.type, value.byteLength()) : base;
-		} catch (IllegalArgumentException e) {
-			toast(String.valueOf(e.getMessage()));
-			return;
-		}
-		final EditText input = new EditText(requireContext());
-		input.setSingleLine(true);
-		input.setText(dbg.describe(loc));
-		final CheckBox freeze = new CheckBox(requireContext());
-		freeze.setText(R.string.memdbg_freeze_mode);
-		freeze.setChecked(true);
-		LinearLayout box = new LinearLayout(requireContext());
-		box.setOrientation(LinearLayout.VERTICAL);
-		box.setPadding(dp(20), dp(8), dp(20), 0);
-		box.addView(input);
-		box.addView(freeze);
-		new AlertDialog.Builder(requireContext())
-				.setTitle(R.string.memdbg_cheat)
-				.setView(box)
-				.setPositiveButton(android.R.string.ok, (d, w) -> {
-					final String name = input.getText().toString();
-					final boolean keep = freeze.isChecked();
-					resolveReference(loc, ref -> {
-						dbg.addCheat(name, ref, loc.type, loc.bigEndian, loc.encoding, loc.length, value, keep, true);
-						toast(R.string.memdbg_added);
-					});
-				})
-				.setNegativeButton(android.R.string.cancel, null)
-				.show();
-	}
-
-	private void viewSelected() {
-		if (selected == null) {
+	/** Shows the memory view at a location, read with the location type and byte order. */
+	private void openInViewer(MemoryLocation loc) {
+		if (loc.type == ValueType.STRING && loc.scope != ScanScope.RAW) {
+			toast(R.string.memdbg_no_bytes);
 			return;
 		}
 		try {
-			view = dbg.openView(selected);
-		} catch (IllegalArgumentException e) {
-			toast(String.valueOf(e.getMessage()));
+			view = dbg.openView(loc);
+		} catch (RuntimeException e) {
+			toast(R.string.memdbg_unavailable);
 			return;
 		}
 		showTab(TAB_MEMORY);
+		syncViewType(loc.type);
+		if (loc.type == ValueType.STRING && loc.length > 0) {
+			viewLength = loc.length;
+			b.editViewLength.setText(String.valueOf(viewLength));
+		}
+		b.checkViewBe.setChecked(loc.bigEndian);
 		goToOffset(view.offset);
+		select(loc); // keeps the real type of the value for the pop-up
 	}
 
 	// ================================================================== memory pane
 
 	private void setupMemoryPane() {
 		buildHexRows();
-		b.btnGo.setOnClickListener(v -> openFromInput());
-		b.editAddress.setImeOptions(EditorInfo.IME_ACTION_GO);
-		b.editAddress.setOnEditorActionListener((tv, action, event) -> {
-			openFromInput();
-			return true;
-		});
 		b.btnRegions.setOnClickListener(v -> showRegions());
-		b.btnPrevPage.setOnClickListener(v -> movePage(-PAGE_BYTES));
-		b.btnNextPage.setOnClickListener(v -> movePage(PAGE_BYTES));
-		b.btnFind.setOnClickListener(v -> findInView());
-		b.editFind.setOnEditorActionListener((tv, action, event) -> {
-			findInView();
-			return true;
+		b.btnListEarlier.setOnClickListener(v -> showEarlier());
+		b.btnListMore.setOnClickListener(v -> showMore());
+		bind(b.spinViewMode, Arrays.asList(getString(R.string.memdbg_mode_hex), getString(R.string.memdbg_mode_list)),
+				listMode ? 1 : 0, pos -> {
+					boolean list = pos == 1;
+					if (list != listMode) {
+						listMode = list;
+						realignPage();
+						renderPage();
+					}
+				});
+
+		List<String> viewTypes = new ArrayList<>();
+		for (ValueType t : VIEW_TYPES) {
+			viewTypes.add(t.label());
+		}
+		bind(b.spinViewType, viewTypes, viewTypeIndex(viewType), pos -> {
+			if (VIEW_TYPES[pos] != viewType) {
+				setViewType(VIEW_TYPES[pos]);
+			}
 		});
-		b.btnWriteHex.setOnClickListener(v -> writeHex());
+		b.checkViewBe.setChecked(dbg.settings().scan.bigEndian);
+		b.checkViewBe.setOnCheckedChangeListener((button, checked) -> refreshSelection());
+		b.editViewLength.setText(String.valueOf(viewLength));
+		b.editViewLength.setImeOptions(EditorInfo.IME_ACTION_DONE);
+		b.editViewLength.setOnEditorActionListener((tv, action, event) -> {
+			refreshSelection();
+			return false;
+		});
+		b.editViewLength.setOnFocusChangeListener((v, hasFocus) -> {
+			if (!hasFocus) {
+				refreshSelection();
+			}
+		});
+		b.btnViewMore.setOnClickListener(v -> {
+			if (selected == null) {
+				toast(R.string.memdbg_nothing_selected);
+			} else {
+				showLocationMenu(selected);
+			}
+		});
 		renderPage();
+	}
+
+	private static int viewTypeIndex(ValueType t) {
+		for (int i = 0; i < VIEW_TYPES.length; i++) {
+			if (VIEW_TYPES[i] == t) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private boolean viewBigEndian() {
+		return b.checkViewBe.isChecked();
+	}
+
+	/** Length in bytes of a String read or write, from the length box (1..256). */
+	private int readViewLength() {
+		try {
+			viewLength = Math.max(1, Math.min(256, Integer.parseInt(b.editViewLength.getText().toString().trim())));
+		} catch (NumberFormatException e) {
+			// keep the last valid length
+		}
+		return viewLength;
+	}
+
+	/** Number of bytes the selected data type covers. */
+	private int viewWidth() {
+		return viewType == ValueType.STRING ? readViewLength() : viewType.width();
+	}
+
+	/** Sets the type without re-reading anything (used when another control already did). */
+	private void syncViewType(ValueType t) {
+		int idx = viewTypeIndex(t);
+		if (idx < 0) {
+			return;
+		}
+		viewType = t;
+		updatingUi = true;
+		b.spinViewType.setSelection(idx, false);
+		updatingUi = false;
+		b.editViewLength.setVisibility(t == ValueType.STRING ? View.VISIBLE : View.GONE);
+	}
+
+	private void setViewType(ValueType t) {
+		syncViewType(t);
+		refreshSelection();
+	}
+
+	/** Re-reads the selected byte with the current type and byte order. */
+	private void refreshSelection() {
+		if (b == null) {
+			return;
+		}
+		realignPage();
+		if (view != null && selOffset >= 0) {
+			selectOffset(selOffset);
+		} else {
+			renderPage();
+		}
+	}
+
+	/** Text of the bytes interpreted as the selected type, or null if too few bytes are available. */
+	@Nullable
+	private String viewValueText(byte[] bytes) {
+		return viewValueTextAt(bytes, 0);
+	}
+
+	/** Like {@link #viewValueText} for the value that starts at {@code off} of {@code bytes}. */
+	@Nullable
+	private String viewValueTextAt(byte[] bytes, int off) {
+		int width = viewWidth();
+		if (bytes == null || bytes.length - off < width) {
+			return null;
+		}
+		if (viewType == ValueType.STRING) {
+			int end = 0;
+			while (end < width && bytes[off + end] != 0) {
+				end++; // text ends at the first zero byte
+			}
+			return StringEncoding.UTF8.decode(Arrays.copyOfRange(bytes, off, off + end));
+		}
+		return viewType.format(viewType.fromBytes(bytes, off, viewBigEndian()));
 	}
 
 	private TextView mono(String text, int sp) {
@@ -1076,9 +1229,10 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 	}
 
-	private void openFromInput() {
+	/** Opens the raw array that starts at {@code address} in the viewer. */
+	private void openRegion(long address) {
 		try {
-			view = dbg.openView(b.editAddress.getText().toString());
+			view = dbg.openView(AddressSpace.format(address));
 			goToOffset(view.offset);
 		} catch (IllegalArgumentException | IllegalStateException e) {
 			view = null;
@@ -1088,33 +1242,144 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 	}
 
+	private void selectOffset(int offset) {
+		selOffset = offset;
+		if (view != null && view.raw) {
+			int len = viewType == ValueType.STRING ? readViewLength() : 0;
+			select(new MemoryLocation(ScanScope.RAW, view.region.id(), offset, viewType, viewBigEndian(),
+					dbg.settings().scan.encoding, len));
+		} else {
+			// an object, class or typed array image: select the field or element under the byte
+			select(locationAt(offset));
+		}
+		renderPage();
+	}
+
+	/**
+	 * The field (class or object view) or element (typed array view) that contains the byte at
+	 * {@code offset} of the viewed image, or null if there is none (padding, String fields).
+	 */
+	@Nullable
+	private MemoryLocation locationAt(int offset) {
+		if (view == null) {
+			return null;
+		}
+		try {
+			MemoryRegion r = view.region;
+			ScanScope scope = r.kind() == MemoryRegion.Kind.STATIC ? ScanScope.STATIC_FIELDS
+					: r.kind() == MemoryRegion.Kind.OBJECT ? ScanScope.OBJECTS : ScanScope.ARRAYS;
+			int slot = -1;
+			int count = r.slotCount();
+			if (r.kind() == MemoryRegion.Kind.ARRAY) {
+				if (count > 0) {
+					int width = r.imageSize() / count;
+					slot = width > 0 ? offset / width : -1;
+				}
+			} else {
+				for (int i = 0; i < count; i++) {
+					int start = r.imageOffset(i);
+					if (start >= 0 && offset >= start && offset < start + r.slotType(i).width()) {
+						slot = i;
+						break;
+					}
+				}
+			}
+			if (slot < 0 || slot >= count) {
+				return null;
+			}
+			return new MemoryLocation(scope, r.id(), slot, r.slotType(slot), viewBigEndian(),
+					dbg.settings().scan.encoding, 0);
+		} catch (RuntimeException e) {
+			return null; // the region disappeared
+		}
+	}
+
+	/** Name of the row at {@code off}: the address, a field name, or an array index. */
+	private String listRowName(int off) {
+		if (view.raw) {
+			return AddressSpace.format(view.base + off);
+		}
+		try {
+			MemoryRegion r = view.region;
+			int count = r.slotCount();
+			if (r.kind() == MemoryRegion.Kind.ARRAY) {
+				int w = count > 0 ? r.imageSize() / count : 0;
+				if (w > 0) {
+					return "[" + (off / w) + "]" + (off % w != 0 ? "+" + (off % w) : "");
+				}
+			} else {
+				for (int i = 0; i < count; i++) {
+					int start = r.imageOffset(i);
+					if (start >= 0 && off >= start && off < start + r.slotType(i).width()) {
+						return off == start ? r.slotName(i) : r.slotName(i) + "+" + (off - start);
+					}
+				}
+			}
+		} catch (RuntimeException e) {
+			// the region disappeared: fall through to a plain offset
+		}
+		return String.format(Locale.US, "+%X", off);
+	}
+
+	private int listWidth() {
+		return Math.max(1, viewWidth());
+	}
+
+	/** Positions the hex page and the list window so that {@code offset} is on screen, with some context. */
+	private void setWindowAround(int offset) {
+		pageStart = (offset / PAGE_BYTES) * PAGE_BYTES;
+		int w = listWidth();
+		listStart = Math.max(0, offset / w - LIST_CONTEXT) * w;
+		listCount = LIST_ROWS;
+	}
+
+	/** Re-centres the window after the type, byte order or mode changed. */
+	private void realignPage() {
+		if (view != null) {
+			setWindowAround(selOffset >= 0 ? selOffset : (listMode ? listStart : pageStart));
+		}
+	}
+
 	private void goToOffset(int offset) {
 		if (view == null) {
 			return;
 		}
-		pageStart = (offset / PAGE_BYTES) * PAGE_BYTES;
+		setWindowAround(offset);
 		selectOffset(offset);
 	}
 
-	private void movePage(int delta) {
+	/** Shows more values above (list) or the previous page (hex). */
+	private void showEarlier() {
 		if (view == null) {
 			return;
 		}
-		int last = Math.max(0, ((view.size() - 1) / PAGE_BYTES) * PAGE_BYTES);
-		pageStart = Math.max(0, Math.min(last, pageStart + delta));
+		if (listMode) {
+			int w = listWidth();
+			int add = Math.min(LIST_ROWS, listStart / w);
+			listStart -= add * w;
+			listCount = Math.min(LIST_MAX_ROWS, listCount + add);
+		} else {
+			pageStart = Math.max(0, pageStart - PAGE_BYTES);
+		}
 		renderPage();
 	}
 
-	private void selectOffset(int offset) {
-		selOffset = offset;
-		if (view != null && view.raw) {
-			ValueType t = selected != null && selected.scope == ScanScope.RAW ? selected.type : ValueType.INT32;
-			int len = isOpaque(t) ? (selected != null && selected.length > 0 ? selected.length : 4) : 0;
-			ScanParams p = dbg.settings().scan;
-			select(new MemoryLocation(ScanScope.RAW, view.region.id(), offset, t, b.checkBigEndian.isChecked(),
-					p.encoding, len));
+	/** Shows more values below (list) or the next page (hex). */
+	private void showMore() {
+		if (view == null) {
+			return;
+		}
+		if (listMode) {
+			int w = listWidth();
+			if (listCount >= LIST_MAX_ROWS) {
+				int lastRow = Math.max(0, view.size() / w - 1);
+				listStart = Math.min(listStart + LIST_ROWS * w, lastRow * w); // slide the window down
+			} else {
+				listCount += LIST_ROWS;
+			}
 		} else {
-			select(null);
+			int last = Math.max(0, ((view.size() - 1) / PAGE_BYTES) * PAGE_BYTES);
+			pageStart = Math.min(last, pageStart + PAGE_BYTES);
 		}
 		renderPage();
 	}
@@ -1123,6 +1388,92 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		if (b == null || byteViews == null) {
 			return;
 		}
+		boolean has = view != null;
+		b.viewEmpty.setVisibility(has ? View.GONE : View.VISIBLE);
+		b.listContainer.setVisibility(has && listMode ? View.VISIBLE : View.GONE);
+		b.hexContainer.setVisibility(has && !listMode ? View.VISIBLE : View.GONE);
+		// the selected value summary and the conversion table are for the hex grid only
+		b.viewValue.setVisibility(!listMode ? View.VISIBLE : View.GONE);
+		b.viewStatus.setVisibility(!listMode ? View.VISIBLE : View.GONE);
+		if (!has) {
+			b.btnListEarlier.setVisibility(View.GONE);
+			b.btnListMore.setVisibility(View.GONE);
+			b.viewInfo.setText(R.string.memdbg_view_empty);
+			b.viewValue.setText("");
+			b.viewStatus.setText("");
+			return;
+		}
+		int w = listWidth();
+		boolean earlier = listMode ? listStart > 0 : pageStart > 0;
+		boolean more = listMode ? (long) listStart + (long) listCount * w + w <= view.size()
+				: pageStart + PAGE_BYTES < view.size();
+		b.btnListEarlier.setVisibility(earlier ? View.VISIBLE : View.GONE);
+		b.btnListMore.setVisibility(more ? View.VISIBLE : View.GONE);
+		if (listMode) {
+			renderList();
+		} else {
+			renderHexPage();
+		}
+	}
+
+	/** Makes sure at least {@code n} list rows exist (they are created once and reused). */
+	private void ensureListRows(int n) {
+		LayoutInflater inflater = LayoutInflater.from(requireContext());
+		while (listRowViews.size() < n) {
+			final int index = listRowViews.size();
+			View row = inflater.inflate(R.layout.list_row_debug, b.listContainer, false);
+			row.setOnClickListener(v -> onListRowClicked(index));
+			b.listContainer.addView(row);
+			listRowViews.add(new ListRow(row, (TextView) row.findViewById(R.id.row_title),
+					(TextView) row.findViewById(R.id.row_subtitle), (TextView) row.findViewById(R.id.row_value)));
+		}
+	}
+
+	private void onListRowClicked(int index) {
+		if (view == null) {
+			return;
+		}
+		selectOffset(listStart + index * listWidth());
+		if (selected != null) {
+			showLocationMenu(selected);
+		} else {
+			toast(R.string.memdbg_nothing_selected);
+		}
+	}
+
+	/** One row per value of the selected type, starting at {@link #listStart}. */
+	private void renderList() {
+		int width = listWidth();
+		int size = view.size();
+		int rows = Math.min(listCount, Math.max(0, (size - listStart) / width));
+		byte[] data = dbg.readView(view, listStart, rows * width);
+		if (data == null) {
+			b.viewInfo.setText(R.string.memdbg_unavailable);
+			return;
+		}
+		ensureListRows(rows);
+		for (int r = 0; r < listRowViews.size(); r++) {
+			ListRow row = listRowViews.get(r);
+			int rel = r * width;
+			if (r >= rows || rel + width > data.length) {
+				row.view.setVisibility(View.GONE);
+				continue;
+			}
+			row.view.setVisibility(View.VISIBLE);
+			int off = listStart + rel;
+			row.title.setText(listRowName(off));
+			String hex = MemoryValue.toHex(data, rel, Math.min(width, 8)) + (width > 8 ? " \u2026" : "");
+			row.sub.setText(String.format(Locale.US, "+%X \u00b7 %s", off, hex));
+			String text = viewValueTextAt(data, rel);
+			row.value.setText(text == null ? getString(R.string.memdbg_unavailable)
+					: viewType == ValueType.STRING ? "\"" + text + "\"" : text);
+			row.view.setBackgroundColor(selOffset >= off && selOffset < off + width ? SELECTED_BG : Color.TRANSPARENT);
+		}
+		int first = listStart / width;
+		b.viewInfo.setText(view.title + " \u00b7 " + (first + 1) + "\u2013" + (first + rows) + " of " + (size / width));
+	}
+
+	private void renderHexPage() {
 		if (view == null) {
 			for (int i = 0; i < PAGE_BYTES; i++) {
 				byteViews[i].setText("  ");
@@ -1140,6 +1491,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			b.viewInfo.setText(R.string.memdbg_unavailable);
 			return;
 		}
+		int selEnd = selOffset < 0 ? -1 : selOffset + Math.max(1, viewWidth());
 		for (int r = 0; r < ROWS; r++) {
 			long rowAddr = (long) pageStart + (long) r * ROW_BYTES;
 			addrViews[r].setText(view.raw ? AddressSpace.format(view.base + rowAddr)
@@ -1156,7 +1508,9 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 					cell.setText("  ");
 					ascii.append(' ');
 				}
-				cell.setBackgroundColor(pageStart + i == selOffset ? SELECTED_BG : Color.TRANSPARENT);
+				int abs = pageStart + i;
+				cell.setBackgroundColor(selOffset >= 0 && abs >= selOffset && abs < selEnd
+						? SELECTED_BG : Color.TRANSPARENT);
 			}
 			asciiViews[r].setText(ascii.toString());
 		}
@@ -1169,63 +1523,24 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 	private void updateInterpretation() {
 		if (view == null || selOffset < 0) {
 			b.viewStatus.setText("");
+			b.viewValue.setText("");
 			return;
 		}
-		byte[] bytes = dbg.readView(view, selOffset, 8);
+		byte[] bytes = dbg.readView(view, selOffset, Math.max(8, viewWidth()));
 		if (bytes == null || bytes.length == 0) {
 			b.viewStatus.setText(R.string.memdbg_unavailable);
+			b.viewValue.setText("");
 			return;
 		}
 		String addr = view.raw ? AddressSpace.format(view.base + selOffset) + " (+" + selOffset + ")"
 				: "+" + selOffset;
-		b.viewStatus.setText("Address: " + addr + "\n"
-				+ MemoryDebugger.interpret(bytes, 0, b.checkBigEndian.isChecked()));
-	}
-
-	private void findInView() {
-		if (view == null) {
-			toast(R.string.memdbg_view_empty);
-			return;
-		}
-		String text = b.editFind.getText().toString().trim();
-		byte[] needle;
-		try {
-			if (text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"")) {
-				needle = StringEncoding.UTF8.encode(text.substring(1, text.length() - 1));
-			} else {
-				needle = MemoryValue.parseHex(text);
-			}
-		} catch (IllegalArgumentException e) {
-			toast(String.valueOf(e.getMessage()));
-			return;
-		}
-		int at = dbg.findInView(view, selOffset + 1, needle);
-		if (at < 0 && selOffset >= 0) {
-			at = dbg.findInView(view, 0, needle);
-		}
-		if (at < 0) {
-			toast(R.string.memdbg_find_none);
-		} else {
-			goToOffset(at);
-		}
-	}
-
-	private void writeHex() {
-		if (view == null || selOffset < 0) {
-			toast(R.string.memdbg_view_empty);
-			return;
-		}
-		try {
-			byte[] data = MemoryValue.parseHex(b.editHex.getText().toString());
-			byte[] back = dbg.writeView(view, selOffset, data);
-			toast(getString(R.string.memdbg_written, MemoryValue.toHex(back, 0, back.length)));
-		} catch (IllegalArgumentException e) {
-			toast(String.valueOf(e.getMessage()));
-		} catch (UnavailableException e) {
-			toast(R.string.memdbg_unavailable);
-		}
-		renderPage();
-		refreshResultValues();
+		String text = viewValueText(bytes);
+		String hex = viewType.isNumeric() && text != null
+				? "  " + viewType.formatHex(viewType.fromBytes(bytes, 0, viewBigEndian())) : "";
+		b.viewValue.setText(viewType.label() + " @ " + addr + " = "
+				+ (text == null ? getString(R.string.memdbg_unavailable) : viewType == ValueType.STRING
+				? "\"" + text + "\"" : text) + hex);
+		b.viewStatus.setText(MemoryDebugger.interpret(bytes, 0, viewBigEndian()));
 	}
 
 	private void showRegions() {
@@ -1253,15 +1568,14 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				new AlertDialog.Builder(requireContext())
 						.setTitle(R.string.memdbg_regions)
 						.setItems(items, (d, which) -> {
-							b.editAddress.setText(AddressSpace.format(regions.get(which).address));
-							openFromInput();
+							openRegion(regions.get(which).address);
 						})
 						.show();
 			});
 		});
 	}
 
-	// ================================================================== watch / frozen / cheats
+	// ================================================================== watch / frozen
 
 	private void setupFrozenPane() {
 		b.editFreezePeriod.setText(String.valueOf(dbg.freezePeriodMs()));
@@ -1292,7 +1606,6 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 		renderList(b.watchContainer, watchRows, new ArrayList<MemoryTarget>(dbg.watches()), TAB_WATCH);
 		renderList(b.frozenContainer, frozenRows, new ArrayList<MemoryTarget>(dbg.freezes()), TAB_FROZEN);
-		renderList(b.cheatsContainer, cheatRows, new ArrayList<MemoryTarget>(dbg.cheats()), TAB_CHEATS);
 		refreshTargetValues();
 	}
 
@@ -1312,18 +1625,14 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		for (final MemoryTarget t : targets) {
 			View row = inflater.inflate(R.layout.list_row_debug, container, false);
 			((TextView) row.findViewById(R.id.row_title)).setText(t.name());
-			String extra = kind == TAB_CHEATS ? " · " + (((MemoryCheat) t).isFreeze()
-					? getString(R.string.memdbg_freeze_mode) : getString(R.string.memdbg_one_shot_mode)) : "";
 			((TextView) row.findViewById(R.id.row_subtitle)).setText(t.ref().describe() + " · "
-					+ t.type().label() + (t.isPersistent() ? "" : " · session") + extra);
+					+ t.type().label() + (t.isPersistent() ? "" : " · session"));
 			TextView value = row.findViewById(R.id.row_value);
 			row.setOnClickListener(v -> {
 				if (kind == TAB_WATCH) {
 					watchMenu((MemoryWatch) t);
-				} else if (kind == TAB_FROZEN) {
-					freezeMenu((MemoryFreeze) t);
 				} else {
-					cheatMenu((MemoryCheat) t);
+					freezeMenu((MemoryFreeze) t);
 				}
 			});
 			container.addView(row);
@@ -1336,7 +1645,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			return;
 		}
 		List<TargetRow> rows = tab == TAB_WATCH ? watchRows : tab == TAB_FROZEN ? frozenRows
-				: tab == TAB_CHEATS ? cheatRows : Collections.<TargetRow>emptyList();
+				: Collections.<TargetRow>emptyList();
 		for (TargetRow r : rows) {
 			MemoryValue cur = dbg.read(r.target);
 			String curText = cur == null ? getString(R.string.memdbg_unavailable) : cur.format();
@@ -1344,10 +1653,6 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				MemoryFreeze f = (MemoryFreeze) r.target;
 				r.value.setText(curText + "\n" + getString(R.string.memdbg_frozen_at, f.value().format())
 						+ (f.isEnabled() ? " [ON]" : " [OFF]"));
-			} else if (r.target instanceof MemoryCheat) {
-				MemoryCheat c = (MemoryCheat) r.target;
-				r.value.setText(curText + "\n" + getString(R.string.memdbg_cheat_sets, c.value().format())
-						+ (c.isEnabled() ? " [ON]" : " [OFF]"));
 			} else {
 				r.value.setText(curText);
 			}
@@ -1370,6 +1675,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	private void watchMenu(final MemoryWatch w) {
 		final String[] items = {
+				getString(R.string.memdbg_open_in_memory),
 				getString(R.string.memdbg_edit_value), getString(R.string.memdbg_rename),
 				getString(R.string.memdbg_change_type), getString(R.string.memdbg_freeze_value),
 				getString(R.string.memdbg_remove)};
@@ -1378,6 +1684,9 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				.setItems(items, (d, which) -> {
 					switch (which) {
 						case 0:
+							openInViewer(w);
+							break;
+						case 1:
 							editTargetValue(w, dbg.read(w), v -> {
 								try {
 									dbg.write(w, v);
@@ -1387,15 +1696,15 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 								refreshTargetValues();
 							});
 							break;
-						case 1:
+						case 2:
 							prompt(R.string.memdbg_rename, w.name(), text -> {
 								dbg.renameWatch(w, text);
 							});
 							break;
-						case 2:
+						case 3:
 							chooseType(w);
 							break;
-						case 3:
+						case 4:
 							freezeFromWatch(w);
 							break;
 						default:
@@ -1442,6 +1751,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	private void freezeMenu(final MemoryFreeze f) {
 		final String[] items = {
+				getString(R.string.memdbg_open_in_memory),
 				getString(R.string.memdbg_edit_value),
 				getString(f.isEnabled() ? R.string.memdbg_disable : R.string.memdbg_enable),
 				getString(R.string.memdbg_rename), getString(R.string.memdbg_remove)};
@@ -1450,12 +1760,15 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				.setItems(items, (d, which) -> {
 					switch (which) {
 						case 0:
-							editTargetValue(f, f.value(), v -> dbg.setFreezeValue(f, v));
+							openInViewer(f);
 							break;
 						case 1:
-							dbg.setFreezeEnabled(f, !f.isEnabled());
+							editTargetValue(f, f.value(), v -> dbg.setFreezeValue(f, v));
 							break;
 						case 2:
+							dbg.setFreezeEnabled(f, !f.isEnabled());
+							break;
+						case 3:
 							prompt(R.string.memdbg_rename, f.name(), text -> dbg.renameFreeze(f, text));
 							break;
 						default:
@@ -1465,32 +1778,4 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				.show();
 	}
 
-	private void cheatMenu(final MemoryCheat c) {
-		final String[] items = {
-				getString(c.isEnabled() ? R.string.memdbg_disable : R.string.memdbg_enable),
-				getString(R.string.memdbg_edit_value),
-				getString(c.isFreeze() ? R.string.memdbg_one_shot_mode : R.string.memdbg_freeze_mode),
-				getString(R.string.memdbg_rename), getString(R.string.memdbg_remove)};
-		new AlertDialog.Builder(requireContext())
-				.setTitle(c.name())
-				.setItems(items, (d, which) -> {
-					switch (which) {
-						case 0:
-							dbg.setCheatEnabled(c, !c.isEnabled());
-							break;
-						case 1:
-							editTargetValue(c, c.value(), v -> dbg.setCheatValue(c, v));
-							break;
-						case 2:
-							dbg.setCheatFreeze(c, !c.isFreeze());
-							break;
-						case 3:
-							prompt(R.string.memdbg_rename, c.name(), text -> dbg.renameCheat(c, text));
-							break;
-						default:
-							dbg.removeCheat(c);
-					}
-				})
-				.show();
-	}
 }

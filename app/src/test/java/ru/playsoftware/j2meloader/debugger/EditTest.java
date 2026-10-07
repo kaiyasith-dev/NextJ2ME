@@ -123,7 +123,7 @@ public class EditTest extends DebuggerTestBase {
 	}
 
 	@Test
-	public void rawHexEditingThroughTheViewer() {
+	public void rawBytesCanBeWrittenAndOpenedByAddress() {
 		TestGame.saveData = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 		ScanSession s = first(ScanScope.RAW, ValueType.BYTES, ScanMode.EXACT, "05 06");
 		MemoryLocation loc = dbg.results(s, 0, 1).get(0).location;
@@ -131,25 +131,14 @@ public class EditTest extends DebuggerTestBase {
 		assertEquals(4, v.offset);
 		assertTrue(v.raw);
 		assertTrue(v.base >= 0x1000);
-		byte[] back = dbg.writeView(v, 4, new byte[]{(byte) 0xAA, (byte) 0xBB});
-		assertArrayEquals(new byte[]{(byte) 0xAA, (byte) 0xBB}, back);
+		MemoryValue back = dbg.write(loc, MemoryValue.ofBytes(new byte[]{(byte) 0xAA, (byte) 0xBB}));
+		assertEquals("AA BB", back.format());
 		assertEquals((byte) 0xAA, TestGame.saveData[4]);
 		assertEquals((byte) 0xBB, TestGame.saveData[5]);
-		// address navigation: the viewer can be reopened by virtual address
+		// the Regions list opens an array by its virtual address
 		MemoryDebugger.ViewTarget again = dbg.openView(AddressSpace.format(v.base + 4));
 		assertEquals(4, again.offset);
 		assertArrayEquals(new byte[]{(byte) 0xAA, (byte) 0xBB, 7}, dbg.readView(again, 4, 3));
-	}
-
-	@Test
-	public void viewerSearchFindsBytes() {
-		TestGame.saveData = new byte[]{0, 0, 9, 8, 7, 0, 9, 8, 7, 1};
-		ScanSession s = first(ScanScope.RAW, ValueType.BYTES, ScanMode.EXACT, "09 08 07");
-		MemoryDebugger.ViewTarget v = dbg.openView(dbg.results(s, 0, 1).get(0).location);
-		byte[] needle = {9, 8, 7};
-		assertEquals(2, dbg.findInView(v, 0, needle));
-		assertEquals(6, dbg.findInView(v, 3, needle));
-		assertEquals(-1, dbg.findInView(v, 7, needle));
 	}
 
 	@Test

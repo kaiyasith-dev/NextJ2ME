@@ -43,6 +43,7 @@ public class TestGame {
 	/** Per object state. */
 	public static class Player {
 		public int hp = 100;
+		public int gold = 250;
 		public short mp = 30;
 		public byte level8 = 7;
 		public char grade = 'A';

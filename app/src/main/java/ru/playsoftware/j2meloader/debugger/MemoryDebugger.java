@@ -14,14 +14,10 @@
 
 package ru.playsoftware.j2meloader.debugger;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -115,7 +111,6 @@ public final class MemoryDebugger {
 
 	private static final int MAX_SESSIONS = 6;
 	private static final long MAX_TOTAL_CANDIDATES = 4_000_000;
-	private static final int MAX_EXPORT = 2000;
 
 	private static volatile MemoryDebugger instance;
 
@@ -151,7 +146,6 @@ public final class MemoryDebugger {
 
 	private final CopyOnWriteArrayList<MemoryWatch> watches = new CopyOnWriteArrayList<>();
 	private final CopyOnWriteArrayList<MemoryFreeze> freezes = new CopyOnWriteArrayList<>();
-	private final CopyOnWriteArrayList<MemoryCheat> cheats = new CopyOnWriteArrayList<>();
 	private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
 	private final AtomicLong uidGen = new AtomicLong(1);
 	private final AtomicBoolean saveQueued = new AtomicBoolean();
@@ -166,7 +160,6 @@ public final class MemoryDebugger {
 	private volatile boolean scanning;
 	private volatile CancelToken scanCancel = new CancelToken();
 	private volatile String invalidationNote;
-	private boolean userPaused;
 	private int midletLoads;
 	private long tick;
 	/** Held for the duration of one freeze tick; lets pausing wait for a tick that is in flight. */
@@ -194,12 +187,6 @@ public final class MemoryDebugger {
 			if (s.value != null) {
 				freezes.add(new MemoryFreeze(uidGen.getAndIncrement(), s.name, s.ref, s.type,
 						s.bigEndian, s.encoding, s.length, s.value, s.enabled));
-			}
-		}
-		for (DebuggerStore.TargetSpec s : loaded.cheats) {
-			if (s.value != null) {
-				cheats.add(new MemoryCheat(uidGen.getAndIncrement(), s.name, s.ref, s.type,
-						s.bigEndian, s.encoding, s.length, s.value, s.freeze, s.enabled));
 			}
 		}
 		freezeEngine.setPeriod(settings.freezePeriodMs);
@@ -324,21 +311,12 @@ public final class MemoryDebugger {
 		registry.clear();
 		space.clear();
 		inspector.clear();
-		synchronized (this) {
-			if (userPaused) {
-				userPaused = false;
-			}
-		}
 		PauseGate.releaseAll();
 		for (MemoryWatch w : watches) {
 			w.setStatus(MemoryTarget.Status.PENDING);
 		}
 		for (MemoryFreeze f : freezes) {
 			f.setStatus(MemoryTarget.Status.PENDING);
-		}
-		for (MemoryCheat c : cheats) {
-			c.applied = false;
-			c.setStatus(MemoryTarget.Status.PENDING);
 		}
 		invalidationNote = reason;
 	}
@@ -391,7 +369,7 @@ public final class MemoryDebugger {
 		return ioExecutor;
 	}
 
-	/** Runs background work (reference lookups, exports) off the caller's thread. */
+	/** Runs background work (reference lookups) off the caller's thread. */
 	public void runAsync(Runnable r) {
 		if (destroyed) {
 			return;
@@ -399,55 +377,16 @@ public final class MemoryDebugger {
 		scanExecutor().execute(r);
 	}
 
-	// ================================================================== pause / resume
-
-	public void pauseGame() {
-		boolean changed = false;
-		synchronized (this) {
-			if (!userPaused && !destroyed) {
-				userPaused = true;
-				PauseGate.hold();
-				changed = true;
-			}
-		}
-		if (changed) {
-			awaitFreezeTick();
-			fire();
-		}
-	}
+	// ================================================================== freeze barrier
 
 	/**
-	 * Once the gate is closed no new freeze tick starts; this waits for one that began just
-	 * before, so nothing is written after pausing returns.
+	 * Once the pause gate is closed no new freeze tick starts; this waits for one that began just
+	 * before, so nothing is written after the game was paused for a scan.
 	 */
-	private void awaitFreezeTick() {
+	void awaitFreezeTick() {
 		synchronized (enforceLock) {
 			// intentionally empty: acquiring the lock is the barrier
 		}
-	}
-
-	public void resumeGame() {
-		boolean changed = false;
-		synchronized (this) {
-			if (userPaused) {
-				userPaused = false;
-				PauseGate.release();
-				changed = true;
-			}
-		}
-		if (changed) {
-			freezeEngine.kick();
-			fire();
-		}
-	}
-
-	public synchronized boolean isGamePaused() {
-		return userPaused;
-	}
-
-	/** Game threads currently parked by the pause gate. */
-	public int parkedThreads() {
-		return PauseGate.parkedThreads();
 	}
 
 	// ================================================================== scanning
@@ -492,32 +431,50 @@ public final class MemoryDebugger {
 		fire();
 	}
 
-	/** Discards all scans. */
-	public void resetAllScans() {
-		synchronized (sessions) {
-			sessions.clear();
-			activeSession = null;
-		}
-		fire();
-	}
-
 	private void addSession(ScanSession s) {
 		synchronized (sessions) {
 			sessions.add(s);
 			activeSession = s;
+			enforceSessionLimits();
+		}
+	}
+
+	/** Forgets the oldest scans when there are too many or they hold too many candidates. */
+	private void enforceSessionLimits() {
+		synchronized (sessions) {
 			while (sessions.size() > MAX_SESSIONS) {
 				sessions.remove(0);
 			}
 			long total = 0;
 			for (ScanSession x : sessions) {
-				total += x.resultCount();
+				total += x.retainedCount();
 			}
-			// keep the game's heap safe: forget the oldest scans first
+			// keep the game's heap safe: forget the oldest scans first, never the active one
 			while (total > MAX_TOTAL_CANDIDATES && sessions.size() > 1) {
-				ScanSession old = sessions.remove(0);
-				total -= old.resultCount();
+				ScanSession old = sessions.get(0) == activeSession ? sessions.get(1) : sessions.get(0);
+				sessions.remove(old);
+				total -= old.retainedCount();
 			}
 		}
+	}
+
+	/**
+	 * Goes back to the results of an earlier step of a scan (0 is the first scan). Later steps are
+	 * discarded.
+	 *
+	 * @throws IllegalStateException if a scan is running, the results belong to a previous run of
+	 *                               the game, or that step was not kept to save memory
+	 */
+	public void restoreScanStep(ScanSession s, int index) {
+		checkAlive();
+		if (scanning) {
+			throw new IllegalStateException("A scan is running");
+		}
+		if (s.generation != generation) {
+			throw new IllegalStateException("These results belong to a previous run of the game");
+		}
+		s.restoreTo(index);
+		fire();
 	}
 
 	/** Synchronous first scan (see {@link #startNewScan}). */
@@ -547,6 +504,7 @@ public final class MemoryDebugger {
 		}
 		runScan(session, p.copy(), false, progress, cancel);
 		rememberScanSettings(p);
+		enforceSessionLimits();
 		return session;
 	}
 
@@ -583,6 +541,9 @@ public final class MemoryDebugger {
 		s.alignment = p.alignment;
 		s.encoding = p.encoding;
 		s.pauseDuringScan = p.pauseDuringScan;
+		s.group = p.group;
+		s.groupWindow = p.groupWindow;
+		s.groupOrdered = p.groupOrdered;
 		markDirty();
 	}
 
@@ -854,10 +815,6 @@ public final class MemoryDebugger {
 	 * from a background thread ({@link #runAsync}).
 	 */
 	public MemoryReference referenceFor(MemoryLocation loc) {
-		return referenceFor(loc, null);
-	}
-
-	private MemoryReference referenceFor(MemoryLocation loc, IdentityHashMap<Object, VmInspector.PathResult> paths) {
 		MemoryRegion r = regionOf(loc);
 		if (r == null) {
 			throw new UnavailableException("Unavailable");
@@ -883,8 +840,7 @@ public final class MemoryDebugger {
 			Object obj = registry.get(loc.regionId);
 			VmInspector.PathResult pr = null;
 			if (obj != null) {
-				pr = paths != null ? paths.get(obj)
-						: inspector.findPath(obj, VmInspector.DEFAULT_MAX_OBJECTS, CancelToken.NEVER);
+				pr = inspector.findPath(obj, VmInspector.DEFAULT_MAX_OBJECTS, CancelToken.NEVER);
 			}
 			if (pr != null) {
 				MemoryReference.Step[] steps = new MemoryReference.Step[pr.steps.size() + 1];
@@ -1068,65 +1024,13 @@ public final class MemoryDebugger {
 		fire();
 	}
 
-	// ================================================================== cheats
-
-	public List<MemoryCheat> cheats() {
-		return new ArrayList<>(cheats);
-	}
-
-	public MemoryCheat addCheat(String name, MemoryReference ref, ValueType type, boolean bigEndian,
-								StringEncoding enc, int length, MemoryValue value, boolean freeze, boolean enabled) {
-		MemoryCheat c = new MemoryCheat(uidGen.getAndIncrement(), displayName(name, ref), ref, type,
-				bigEndian, enc, length, value, freeze, enabled);
-		cheats.add(c);
-		changedFreezes();
-		return c;
-	}
-
-	public void removeCheat(MemoryCheat c) {
-		cheats.remove(c);
-		changedFreezes();
-	}
-
-	public void setCheatEnabled(MemoryCheat c, boolean enabled) {
-		c.setEnabled(enabled);
-		changedFreezes();
-		if (enabled) {
-			freezeEngine.kick();
-		}
-	}
-
-	public void setCheatFreeze(MemoryCheat c, boolean freeze) {
-		c.setFreeze(freeze);
-		changedFreezes();
-	}
-
-	public void setCheatValue(MemoryCheat c, MemoryValue value) {
-		c.setValue(value);
-		changedFreezes();
-		if (c.isEnabled()) {
-			freezeEngine.kick();
-		}
-	}
-
-	public void renameCheat(MemoryCheat c, String name) {
-		c.setName(displayName(name, c.ref()));
-		markDirty();
-		fire();
-	}
-
 	// ================================================================== enforcement
 
-	/** Number of freezes and cheats that currently need the timer. */
+	/** Number of enabled freezes, which is what the timer is needed for. */
 	int activeFreezeCount() {
 		int n = 0;
 		for (MemoryFreeze f : freezes) {
 			if (f.isEnabled()) {
-				n++;
-			}
-		}
-		for (MemoryCheat c : cheats) {
-			if (c.isEnabled()) {
 				n++;
 			}
 		}
@@ -1150,21 +1054,9 @@ public final class MemoryDebugger {
 				f.failures = enforce(f, f.value()) ? 0 : f.failures + 1;
 			}
 		}
-		for (MemoryCheat c : cheats) {
-			if (!c.isEnabled() || !due(c.failures, n)) {
-				continue;
-			}
-			if (c.isFreeze() || !c.applied) {
-				boolean ok = enforce(c, c.value());
-				c.failures = ok ? 0 : c.failures + 1;
-				if (ok && !c.isFreeze()) {
-					c.applied = true;
-				}
-			}
-		}
 	}
 
-	/** Failing entries back off to every 10th tick so unresolved cheats stay cheap. */
+	/** Failing entries back off to every 10th tick so unresolved freezes stay cheap. */
 	private static boolean due(int failures, long tick) {
 		return failures < 5 || tick % 10 == 0;
 	}
@@ -1281,156 +1173,6 @@ public final class MemoryDebugger {
 		}
 	}
 
-	/** Writes bytes at {@code offset} of a viewed region and returns the read-back. */
-	public byte[] writeView(ViewTarget v, int offset, byte[] data) {
-		try {
-			v.region.writeImage(offset, data, 0, data.length);
-			return v.region.readImage(offset, data.length);
-		} catch (RuntimeException e) {
-			throw new UnavailableException("Unavailable", e);
-		}
-	}
-
-	/** Finds {@code needle} in the region image starting at {@code from}; -1 if absent. */
-	public int findInView(ViewTarget v, int from, byte[] needle) {
-		try {
-			int size = v.region.imageSize();
-			if (needle.length == 0 || size < needle.length) {
-				return -1;
-			}
-			final int chunk = 1 << 16;
-			byte[] buf = new byte[chunk + needle.length];
-			for (int off = Math.max(0, from); off + needle.length <= size; off += chunk) {
-				int n = Math.min(chunk + needle.length - 1, size - off);
-				v.region.readImage(off, buf, 0, n);
-				int limit = Math.min(chunk, n - needle.length + 1);
-				for (int i = 0; i < limit; i++) {
-					int j = 0;
-					while (j < needle.length && buf[i + j] == needle[j]) {
-						j++;
-					}
-					if (j == needle.length) {
-						return off + i;
-					}
-				}
-			}
-			return -1;
-		} catch (RuntimeException e) {
-			return -1;
-		}
-	}
-
-	// ================================================================== export / import of results
-
-	/**
-	 * Writes the active session's results (up to a limit) to {@code file} as JSON. Results that
-	 * have a durable reference can be imported again in a later run.
-	 */
-	public int exportResults(ScanSession s, File file) throws IOException {
-		checkAlive();
-		List<ScanResult> rows = results(s, 0, MAX_EXPORT);
-		IdentityHashMap<Object, VmInspector.PathResult> paths = null;
-		if (s.scope != ScanScope.STATIC_FIELDS) {
-			List<Object> objs = new ArrayList<>();
-			for (ScanResult r : rows) {
-				Object o = registry.get(r.location.regionId);
-				if (o != null) {
-					objs.add(o);
-				}
-			}
-			paths = inspector.findPaths(objs, VmInspector.DEFAULT_MAX_OBJECTS, CancelToken.NEVER);
-		}
-		DebuggerStore.ExportDto dto = new DebuggerStore.ExportDto();
-		dto.scope = s.scope.name();
-		dto.type = s.type.name();
-		dto.bigEndian = s.bigEndian;
-		dto.encoding = s.encoding.name();
-		for (ScanResult r : rows) {
-			DebuggerStore.ExportEntryDto e = new DebuggerStore.ExportEntryDto();
-			e.address = describe(r.location);
-			e.value = r.previous.format();
-			try {
-				MemoryReference ref = referenceFor(r.location, paths);
-				if (ref.isPersistent()) {
-					e.ref = DebuggerStore.refToDto(ref);
-				}
-			} catch (RuntimeException ex) {
-				// unavailable results are exported without a reference
-			}
-			dto.entries.add(e);
-		}
-		store.writeExport(file, dto);
-		return dto.entries.size();
-	}
-
-	/**
-	 * Reads an export and starts a new session from the entries whose references still resolve in
-	 * this run. Returns the session, or throws if nothing matched.
-	 */
-	public ScanSession importResults(File file) throws IOException {
-		checkAlive();
-		DebuggerStore.ExportDto dto = store.readExport(file);
-		ValueType type;
-		StringEncoding enc;
-		try {
-			type = ValueType.valueOf(dto.type);
-		} catch (RuntimeException e) {
-			throw new IOException("Unknown value type in export");
-		}
-		try {
-			enc = StringEncoding.valueOf(dto.encoding);
-		} catch (RuntimeException e) {
-			enc = StringEncoding.UTF8;
-		}
-		if (!type.isNumeric()) {
-			throw new IOException("Only numeric scans can be imported");
-		}
-		MemorySnapshot snap = new MemorySnapshot(false);
-		Map<Long, MemorySnapshot.Block> blocks = new LinkedHashMap<>();
-		ScanScope scope = null;
-		for (DebuggerStore.ExportEntryDto e : dto.entries) {
-			if (e.ref == null) {
-				continue;
-			}
-			MemoryReference ref = DebuggerStore.refFromDto(e.ref);
-			if (ref == null) {
-				continue;
-			}
-			MemoryLocation loc = locate(ref, type, dto.bigEndian, enc, 0);
-			if (loc == null || (scope != null && loc.scope != scope)) {
-				continue;
-			}
-			MemoryValue v = read(loc);
-			if (v == null) {
-				continue;
-			}
-			scope = loc.scope;
-			MemorySnapshot.Block b = blocks.get(loc.regionId);
-			if (b == null) {
-				b = snap.newBlock(loc.regionId, 4);
-				blocks.put(loc.regionId, b);
-			}
-			b.add(loc.slot, v.bits, null);
-			snap.added();
-		}
-		if (scope == null) {
-			throw new IOException("None of the " + dto.entries.size()
-					+ " entries could be found in the running game");
-		}
-		ScanParams p = new ScanParams();
-		p.scope = scope;
-		p.type = type;
-		p.bigEndian = dto.bigEndian;
-		p.encoding = enc;
-		ScanSession session;
-		synchronized (sessions) {
-			session = new ScanSession(++sessionSeq, generation, p);
-		}
-		session.update(snap, false, session.note("Imported " + file.getName(), snap.size()), 0);
-		addSession(session);
-		return session;
-	}
-
 	// ================================================================== persistence
 
 	private void markDirty() {
@@ -1457,26 +1199,21 @@ public final class MemoryDebugger {
 		}
 		List<DebuggerStore.TargetSpec> w = new ArrayList<>();
 		List<DebuggerStore.TargetSpec> f = new ArrayList<>();
-		List<DebuggerStore.TargetSpec> c = new ArrayList<>();
 		for (MemoryWatch x : watches) {
-			w.add(spec(x, null, false, false));
+			w.add(spec(x, null, false));
 		}
 		for (MemoryFreeze x : freezes) {
-			f.add(spec(x, x.value(), x.isEnabled(), true));
-		}
-		for (MemoryCheat x : cheats) {
-			c.add(spec(x, x.value(), x.isEnabled(), x.isFreeze()));
+			f.add(spec(x, x.value(), x.isEnabled()));
 		}
 		try {
-			store.save(settings, w, f, c);
+			store.save(settings, w, f);
 			return true;
 		} catch (IOException e) {
 			return false;
 		}
 	}
 
-	private static DebuggerStore.TargetSpec spec(MemoryTarget t, MemoryValue value, boolean enabled,
-												boolean freeze) {
+	private static DebuggerStore.TargetSpec spec(MemoryTarget t, MemoryValue value, boolean enabled) {
 		DebuggerStore.TargetSpec s = new DebuggerStore.TargetSpec();
 		s.name = t.name();
 		s.ref = t.ref();
@@ -1486,13 +1223,7 @@ public final class MemoryDebugger {
 		s.length = t.length();
 		s.value = value;
 		s.enabled = enabled;
-		s.freeze = freeze;
 		return s;
-	}
-
-	/** Exposed for the UI: the store's backing file (used for the export folder). */
-	public File storeFile() {
-		return store == null ? null : store.file();
 	}
 
 	/** Formats the interpretations of the bytes at {@code off} like the memory viewer shows them. */
@@ -1508,12 +1239,15 @@ public final class MemoryDebugger {
 					.append("  (u").append(ValueType.UINT16.fromBytes(data, off, bigEndian)).append(")\n");
 		}
 		if (avail >= 4) {
-			sb.append("Int:    ").append(ValueType.INT32.fromBytes(data, off, bigEndian)).append('\n');
+			sb.append("Int:    ").append(ValueType.INT32.fromBytes(data, off, bigEndian))
+					.append("  (u").append(ValueType.UINT32.fromBytes(data, off, bigEndian)).append(")\n");
 			sb.append("Float:  ").append(ValueType.FLOAT.format(ValueType.FLOAT.fromBytes(data, off, bigEndian)))
 					.append('\n');
 		}
 		if (avail >= 8) {
-			sb.append("Long:   ").append(ValueType.INT64.fromBytes(data, off, bigEndian)).append('\n');
+			sb.append("Long:   ").append(ValueType.INT64.fromBytes(data, off, bigEndian))
+					.append("  (u").append(ValueType.UINT64.format(ValueType.UINT64.fromBytes(data, off, bigEndian)))
+					.append(")\n");
 			sb.append("Double: ").append(ValueType.DOUBLE.format(ValueType.DOUBLE.fromBytes(data, off, bigEndian)))
 					.append('\n');
 		}

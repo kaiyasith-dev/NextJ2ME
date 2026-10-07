@@ -50,38 +50,9 @@
             android:text="@string/close" />
     </LinearLayout>
 
-    <!-- Pause / Resume -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingLeft="8dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp"
-        android:paddingRight="8dp">
-
-        <Button
-            android:id="@+id/btn_pause"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_marginRight="4dp"
-            android:layout_weight="1"
-            android:text="@string/memdbg_pause" />
-
-        <Button
-            android:id="@+id/btn_resume"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginLeft="4dp"
-            android:layout_weight="1"
-            android:text="@string/memdbg_resume" />
-    </LinearLayout>
-
     <!-- Tabs -->
     <LinearLayout
+        android:id="@+id/tab_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -131,15 +102,6 @@
             android:text="@string/memdbg_tab_frozen"
             android:textSize="12sp" />
 
-        <Button
-            android:id="@+id/tab_cheats"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:minWidth="0dp"
-            android:text="@string/memdbg_tab_cheats"
-            android:textSize="12sp" />
     </LinearLayout>
 
     <!-- Content -->
@@ -171,14 +133,6 @@
                     android:id="@+id/spin_scope"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
-
-                <TextView
-                    android:id="@+id/scope_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/memdbg_scope_hint"
-                    android:textColor="?attr/textColorSecondary"
-                    android:textSize="11sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -239,6 +193,44 @@
                     android:inputType="text"
                     android:maxLines="1"
                     android:textColor="?attr/textColorPrimary" />
+
+                <CheckBox
+                    android:id="@+id/check_group"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/memdbg_group"
+                    android:textColor="?attr/textColorPrimary"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:id="@+id/group_options"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:baselineAligned="false"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <EditText
+                        android:id="@+id/edit_group_window"
+                        android:layout_width="90dp"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/memdbg_group_window"
+                        android:importantForAutofill="no"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:textColor="?attr/textColorPrimary" />
+
+                    <CheckBox
+                        android:id="@+id/check_group_ordered"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginLeft="8dp"
+                        android:text="@string/memdbg_group_ordered"
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -380,46 +372,27 @@
                     </LinearLayout>
                 </LinearLayout>
 
-                <!-- Sessions / history -->
-                <Spinner
-                    android:id="@+id/spin_session"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp" />
-
+                <!-- Scan sessions and their history in one row -->
                 <LinearLayout
+                    android:id="@+id/session_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:baselineAligned="false"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
+
+                    <Spinner
+                        android:id="@+id/spin_session"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
 
                     <Button
                         android:id="@+id/btn_history"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="4dp"
-                        android:layout_marginRight="4dp"
-                        android:layout_weight="1"
                         android:text="@string/memdbg_history" />
-
-                    <Button
-                        android:id="@+id/btn_export"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginLeft="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:layout_marginRight="4dp"
-                        android:layout_weight="1"
-                        android:text="@string/memdbg_export" />
-
-                    <Button
-                        android:id="@+id/btn_import"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginLeft="4dp"
-                        android:layout_weight="1"
-                        android:text="@string/memdbg_import" />
                 </LinearLayout>
 
                 <!-- Results -->
@@ -453,133 +426,134 @@
                 android:orientation="vertical"
                 android:padding="8dp">
 
+                <!-- which region is open, how to pick another, and the display mode -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:baselineAligned="false"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
-
-                    <EditText
-                        android:id="@+id/edit_address"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/memdbg_address"
-                        android:imeOptions="actionGo"
-                        android:importantForAutofill="no"
-                        android:inputType="textNoSuggestions"
-                        android:maxLines="1"
-                        android:textColor="?attr/textColorPrimary"
-                        android:typeface="monospace" />
-
-                    <Button
-                        android:id="@+id/btn_go"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/memdbg_go" />
-
-                    <Button
-                        android:id="@+id/btn_regions"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/memdbg_regions" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <EditText
-                        android:id="@+id/edit_find"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/memdbg_find_hint"
-                        android:imeOptions="actionSearch"
-                        android:importantForAutofill="no"
-                        android:inputType="textNoSuggestions"
-                        android:maxLines="1"
-                        android:textColor="?attr/textColorPrimary"
-                        android:typeface="monospace" />
-
-                    <Button
-                        android:id="@+id/btn_find"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/memdbg_find" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/btn_prev_page"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/memdbg_prev_page" />
 
                     <TextView
                         android:id="@+id/view_info"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:gravity="center"
                         android:text="@string/memdbg_view_empty"
-                        android:textColor="?attr/textColorSecondary"
-                        android:textSize="11sp" />
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
 
                     <Button
-                        android:id="@+id/btn_next_page"
+                        android:id="@+id/btn_regions"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/memdbg_next_page" />
+                        android:text="@string/memdbg_regions" />
+
                 </LinearLayout>
+
+                <!-- data type used to read and edit values -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:baselineAligned="false"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <Spinner
+                        android:id="@+id/spin_view_type"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
+
+                    <Spinner
+                        android:id="@+id/spin_view_mode"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
+
+                    <EditText
+                        android:id="@+id/edit_view_length"
+                        android:layout_width="64dp"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/memdbg_view_length"
+                        android:importantForAutofill="no"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:textColor="?attr/textColorPrimary"
+                        android:visibility="gone" />
+
+                    <CheckBox
+                        android:id="@+id/check_view_be"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/memdbg_view_big_endian"
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btn_view_more"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/memdbg_more" />
+                </LinearLayout>
+
+                <!-- shown while nothing is open -->
+                <TextView
+                    android:id="@+id/view_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp"
+                    android:text="@string/memdbg_view_empty_hint"
+                    android:textColor="?attr/textColorSecondary"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btn_list_earlier"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/memdbg_show_earlier"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/list_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:id="@+id/hex_container"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btn_list_more"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/memdbg_show_more"
+                    android:visibility="gone" />
+
+                <!-- hex mode only: the selected value and its other interpretations -->
+                <TextView
+                    android:id="@+id/view_value"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="?attr/colorAccent"
+                    android:textSize="12sp"
+                    android:typeface="monospace" />
 
                 <TextView
                     android:id="@+id/view_status"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="4dp"
                     android:textColor="?attr/textColorPrimary"
                     android:textSize="12sp"
                     android:typeface="monospace" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <EditText
-                        android:id="@+id/edit_hex"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/memdbg_hex_edit"
-                        android:importantForAutofill="no"
-                        android:inputType="textNoSuggestions|textCapCharacters"
-                        android:maxLines="1"
-                        android:textColor="?attr/textColorPrimary"
-                        android:textSize="13sp"
-                        android:typeface="monospace" />
-
-                    <Button
-                        android:id="@+id/btn_write_hex"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/memdbg_write_hex" />
-                </LinearLayout>
             </LinearLayout>
         </ScrollView>
 
@@ -642,135 +616,6 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- ===================== Cheats ===================== -->
-        <ScrollView
-            android:id="@+id/pane_cheats"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/cheats_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-        </ScrollView>
     </FrameLayout>
 
-    <!-- ===================== Selected value (Scan and Memory tabs) ===================== -->
-    <LinearLayout
-        android:id="@+id/panel_selected"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?attr/colorPrimary"
-        android:orientation="vertical"
-        android:padding="8dp">
-
-        <TextView
-            android:id="@+id/selected_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/memdbg_nothing_selected"
-            android:textColor="#ffffff"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/selected_detail"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#d0d0d0"
-            android:textSize="11sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <Spinner
-                android:id="@+id/spin_sel_type"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <EditText
-                android:id="@+id/edit_new_value"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/memdbg_new_value"
-                android:importantForAutofill="no"
-                android:inputType="text"
-                android:maxLines="1"
-                android:textColor="#ffffff"
-                android:textColorHint="#b0b0b0" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btn_read"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_read"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_write"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_write"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_freeze"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.4"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_freeze"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btn_watch"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_watch"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_cheat"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_cheat"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_viewer"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.4"
-                android:minWidth="0dp"
-                android:text="@string/memdbg_open_viewer"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </LinearLayout>
 </LinearLayout>

@@ -33,7 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Saves and loads what belongs to one game: watches, frozen values, cheats and scan settings.
+ * Saves and loads what belongs to one game: watches, frozen values and scan settings.
  * <p>
  * Only references that are meaningful in a later run are written (static fields and paths from
  * static roots). Scan results, object ids and virtual addresses are session state and are
@@ -44,7 +44,7 @@ public final class DebuggerStore {
 	private static final int VERSION = 1;
 	private static final Charset UTF8 = Charset.forName("UTF-8");
 
-	/** Plain description of a watch, freeze or cheat as stored on disk. */
+	/** Plain description of a watch or freeze as stored on disk. */
 	public static final class TargetSpec {
 		public String name;
 		public MemoryReference ref;
@@ -54,7 +54,6 @@ public final class DebuggerStore {
 		public int length;
 		public MemoryValue value;
 		public boolean enabled;
-		public boolean freeze;
 	}
 
 	/** Everything read from disk. */
@@ -62,7 +61,6 @@ public final class DebuggerStore {
 		public DebuggerSettings settings = new DebuggerSettings();
 		public final List<TargetSpec> watches = new ArrayList<>();
 		public final List<TargetSpec> freezes = new ArrayList<>();
-		public final List<TargetSpec> cheats = new ArrayList<>();
 	}
 
 	// ------------------------------------------------------------------ DTOs
@@ -89,7 +87,6 @@ public final class DebuggerStore {
 		@SerializedName("length") int length;
 		@SerializedName("value") String value;
 		@SerializedName("enabled") boolean enabled;
-		@SerializedName("freeze") boolean freeze;
 	}
 
 	static final class SettingsDto {
@@ -101,6 +98,9 @@ public final class DebuggerStore {
 		@SerializedName("alignment") int alignment;
 		@SerializedName("encoding") String encoding;
 		@SerializedName("pauseDuringScan") boolean pauseDuringScan = true;
+		@SerializedName("group") boolean group;
+		@SerializedName("groupWindow") int groupWindow = ScanParams.DEFAULT_GROUP_WINDOW;
+		@SerializedName("groupOrdered") boolean groupOrdered;
 		@SerializedName("freezePeriodMs") int freezePeriodMs = 100;
 	}
 
@@ -110,24 +110,6 @@ public final class DebuggerStore {
 		@SerializedName("settings") SettingsDto settings;
 		@SerializedName("watches") List<TargetDto> watches = new ArrayList<>();
 		@SerializedName("freezes") List<TargetDto> freezes = new ArrayList<>();
-		@SerializedName("cheats") List<TargetDto> cheats = new ArrayList<>();
-	}
-
-	/** One exported scan result (see {@link MemoryDebugger#exportResults}). */
-	static final class ExportEntryDto {
-		@SerializedName("ref") RefDto ref;
-		@SerializedName("address") String address;
-		@SerializedName("value") String value;
-	}
-
-	static final class ExportDto {
-		@SerializedName("version") int version = VERSION;
-		@SerializedName("appId") String appId;
-		@SerializedName("scope") String scope;
-		@SerializedName("type") String type;
-		@SerializedName("bigEndian") boolean bigEndian = true;
-		@SerializedName("encoding") String encoding;
-		@SerializedName("entries") List<ExportEntryDto> entries = new ArrayList<>();
 	}
 
 	private final File file;
@@ -141,14 +123,6 @@ public final class DebuggerStore {
 	public DebuggerStore(File file, String appId) {
 		this.file = file;
 		this.appId = appId;
-	}
-
-	public File file() {
-		return file;
-	}
-
-	public String appId() {
-		return appId;
 	}
 
 	// ------------------------------------------------------------------ load
@@ -173,7 +147,6 @@ public final class DebuggerStore {
 		}
 		readTargets(dto.watches, out.watches);
 		readTargets(dto.freezes, out.freezes);
-		readTargets(dto.cheats, out.cheats);
 		return out;
 	}
 
@@ -196,6 +169,10 @@ public final class DebuggerStore {
 		p.alignment = Math.max(0, s.alignment);
 		p.encoding = enumOf(StringEncoding.class, s.encoding, p.encoding);
 		p.pauseDuringScan = s.pauseDuringScan;
+		p.group = s.group;
+		p.groupWindow = s.groupWindow < 1 ? ScanParams.DEFAULT_GROUP_WINDOW
+				: Math.min(s.groupWindow, ScanParams.MAX_GROUP_WINDOW);
+		p.groupOrdered = s.groupOrdered;
 		out.freezePeriodMs = s.freezePeriodMs <= 0 ? 100 : s.freezePeriodMs;
 	}
 
@@ -224,7 +201,6 @@ public final class DebuggerStore {
 			s.encoding = enumOf(StringEncoding.class, d.encoding, StringEncoding.UTF8);
 			s.length = d.length;
 			s.enabled = d.enabled;
-			s.freeze = d.freeze;
 			if (d.value != null) {
 				s.value = MemoryValue.parse(s.type, d.value, s.encoding);
 			}
@@ -247,8 +223,7 @@ public final class DebuggerStore {
 
 	// ------------------------------------------------------------------ save
 
-	public void save(DebuggerSettings settings, List<TargetSpec> watches, List<TargetSpec> freezes,
-					 List<TargetSpec> cheats) throws IOException {
+	public void save(DebuggerSettings settings, List<TargetSpec> watches, List<TargetSpec> freezes) throws IOException {
 		if (file == null) {
 			return;
 		}
@@ -264,11 +239,13 @@ public final class DebuggerStore {
 		s.alignment = p.alignment;
 		s.encoding = p.encoding.name();
 		s.pauseDuringScan = p.pauseDuringScan;
+		s.group = p.group;
+		s.groupWindow = p.groupWindow;
+		s.groupOrdered = p.groupOrdered;
 		s.freezePeriodMs = settings.freezePeriodMs;
 		dto.settings = s;
 		writeTargets(watches, dto.watches);
 		writeTargets(freezes, dto.freezes);
-		writeTargets(cheats, dto.cheats);
 		writeAtomically(file, gson.toJson(dto));
 	}
 
@@ -286,27 +263,7 @@ public final class DebuggerStore {
 			d.length = s.length;
 			d.value = s.value == null ? null : s.value.format();
 			d.enabled = s.enabled;
-			d.freeze = s.freeze;
 			out.add(d);
-		}
-	}
-
-	// ------------------------------------------------------------------ export / import of scan results
-
-	void writeExport(File target, ExportDto dto) throws IOException {
-		dto.appId = appId;
-		writeAtomically(target, gson.toJson(dto));
-	}
-
-	ExportDto readExport(File source) throws IOException {
-		try (InputStream in = new FileInputStream(source); Reader r = new java.io.InputStreamReader(in, UTF8)) {
-			ExportDto dto = gson.fromJson(r, ExportDto.class);
-			if (dto == null || dto.entries == null) {
-				throw new IOException("Not a scan export");
-			}
-			return dto;
-		} catch (JsonParseException e) {
-			throw new IOException("Not a scan export: " + e.getMessage());
 		}
 	}
 

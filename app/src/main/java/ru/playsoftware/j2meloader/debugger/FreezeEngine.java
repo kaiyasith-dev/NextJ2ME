@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Drives value freezing from one low priority timer thread.
  * <p>
- * The thread exists only while at least one freeze or cheat needs enforcing, ticks at a fixed
+ * The thread exists only while at least one freeze needs enforcing, ticks at a fixed
  * low rate (default 10 Hz) and does nothing but compare and, when needed, write a few values.
  * It is never started while the debugger is unused, and is shut down as soon as the last freeze
  * is removed or the game is destroyed.

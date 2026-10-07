@@ -16,7 +16,7 @@ package ru.playsoftware.j2meloader.debugger;
 
 /**
  * Something the debugger keeps an eye on or enforces: a {@link MemoryReference} plus the way to
- * interpret it. Base class of {@link MemoryWatch}, {@link MemoryFreeze} and {@link MemoryCheat}.
+ * interpret it. Base class of {@link MemoryWatch} and {@link MemoryFreeze}.
  */
 public abstract class MemoryTarget {
 	/** Result of the last attempt to reach the target. */
@@ -87,12 +87,6 @@ public abstract class MemoryTarget {
 	void retype(ValueType newType, int newLength) {
 		this.type = newType;
 		this.length = newLength;
-		this.status = Status.PENDING;
-	}
-
-	/** Re-points the target (used when a session-only reference was upgraded to a durable one). */
-	void setRef(MemoryReference newRef) {
-		this.ref = newRef;
 		this.status = Status.PENDING;
 	}
 

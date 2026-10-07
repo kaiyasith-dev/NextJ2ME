@@ -23,16 +23,18 @@ package ru.playsoftware.j2meloader.debugger;
  * always have equal bits, which makes snapshot comparison a plain {@code long} compare.
  */
 public enum ValueType {
-	INT8("Byte (int8)", 1),
-	UINT8("Unsigned byte (uint8)", 1),
-	INT16("Short (int16)", 2),
-	UINT16("Unsigned short (uint16)", 2),
-	INT32("Int32", 4),
-	INT64("Long (int64)", 8),
+	INT8("int8", 1),
+	UINT8("uint8", 1),
+	INT16("int16", 2),
+	UINT16("uint16", 2),
+	INT32("int32", 4),
+	UINT32("uint32", 4),
+	INT64("int64", 8),
+	UINT64("uint64", 8),
 	FLOAT("Float", 4),
 	DOUBLE("Double", 8),
 	BOOLEAN("Boolean", 1),
-	BYTES("Raw bytes (hex)", 0),
+	BYTES("Raw bytes", 0),
 	STRING("String", 0);
 
 	private final String label;
@@ -61,12 +63,7 @@ public enum ValueType {
 	}
 
 	public boolean isUnsigned() {
-		return this == UINT8 || this == UINT16;
-	}
-
-	/** Integer-like: everything numeric that is neither a float nor a double. */
-	public boolean isIntegral() {
-		return isNumeric() && !isFloating();
+		return this == UINT8 || this == UINT16 || this == UINT32 || this == UINT64;
 	}
 
 	/**
@@ -84,6 +81,12 @@ public enum ValueType {
 			case INT16:
 			case UINT16:
 				return slot == INT16 || slot == UINT16;
+			case INT32:
+			case UINT32:
+				return slot == INT32 || slot == UINT32;
+			case INT64:
+			case UINT64:
+				return slot == INT64 || slot == UINT64;
 			default:
 				return false;
 		}
@@ -102,6 +105,8 @@ public enum ValueType {
 				return raw & 0xFFFFL;
 			case INT32:
 				return (int) raw;
+			case UINT32:
+				return raw & 0xFFFFFFFFL;
 			case FLOAT:
 				return raw & 0xFFFFFFFFL;
 			case BOOLEAN:
@@ -111,11 +116,6 @@ public enum ValueType {
 		}
 	}
 
-	/** Integer value of canonical bits (integral types only). */
-	public long toLong(long bits) {
-		return bits;
-	}
-
 	/** Numeric value of canonical bits as a double (all numeric types). */
 	public double toDouble(long bits) {
 		switch (this) {
@@ -123,6 +123,8 @@ public enum ValueType {
 				return Float.intBitsToFloat((int) bits);
 			case DOUBLE:
 				return Double.longBitsToDouble(bits);
+			case UINT64:
+				return (double) (bits >>> 1) * 2.0 + (bits & 1);
 			default:
 				return (double) bits;
 		}
@@ -143,12 +145,18 @@ public enum ValueType {
 		if (isFloating()) {
 			return toDouble(a) > toDouble(b);
 		}
+		if (this == UINT64) {
+			return (a ^ Long.MIN_VALUE) > (b ^ Long.MIN_VALUE);
+		}
 		return a > b;
 	}
 
 	public boolean isLess(long a, long b) {
 		if (isFloating()) {
 			return toDouble(a) < toDouble(b);
+		}
+		if (this == UINT64) {
+			return (a ^ Long.MIN_VALUE) < (b ^ Long.MIN_VALUE);
 		}
 		return a < b;
 	}
@@ -217,11 +225,16 @@ public enum ValueType {
 			}
 			v = parseUnsignedHex(hex);
 		} else {
-			if (this == INT64) {
+			if (this == UINT64) {
+				v = parseUnsignedDecimal(body); // the full range up to 18446744073709551615
+				if (negative && v != 0) {
+					throw new NumberFormatException("Out of range for " + label + ": " + s);
+				}
+			} else if (this == INT64) {
 				// accepts Long.MIN_VALUE and, like a hex editor, the unsigned range of 64 bit input
 				v = parseUnsignedDecimal(body);
 				if (negative && v < 0 && v != Long.MIN_VALUE) {
-					throw new NumberFormatException("Out of range for Long: " + s);
+					throw new NumberFormatException("Out of range for " + label + ": " + s);
 				}
 			} else {
 				v = Long.parseLong(body);
@@ -252,6 +265,10 @@ public enum ValueType {
 			case INT32:
 				min = Integer.MIN_VALUE;
 				max = Integer.MAX_VALUE;
+				break;
+			case UINT32:
+				min = 0;
+				max = 0xFFFFFFFFL;
 				break;
 			default:
 				return v;
@@ -305,6 +322,10 @@ public enum ValueType {
 			case BYTES:
 			case STRING:
 				return "?";
+			case UINT64:
+				return bits >= 0 ? Long.toString(bits)
+						: java.math.BigInteger.valueOf(bits >>> 1).shiftLeft(1)
+						.add(java.math.BigInteger.valueOf(bits & 1)).toString();
 			default:
 				return Long.toString(bits);
 		}

@@ -80,12 +80,11 @@ public class LifecycleTest extends DebuggerTestBase {
 	}
 
 	@Test
-	public void restartReleasesAPausedGameAndResetsSessionReferences() {
-		dbg.pauseGame();
+	public void restartReleasesAHeldGameAndResetsSessionReferences() {
+		PauseGate.hold(); // e.g. a scan was holding the game when it restarted
 		assertTrue(PauseGate.isPaused());
 		dbg.onMidletLoading();
 		assertFalse("a restart never leaves the new game parked", PauseGate.isPaused());
-		assertFalse(dbg.isGamePaused());
 	}
 
 	@Test
@@ -107,7 +106,7 @@ public class LifecycleTest extends DebuggerTestBase {
 		dbg.addFreeze("Money", MemoryReference.staticField(TestGame.class.getName(), "money"),
 				ValueType.INT32, true, StringEncoding.UTF8, 0, val("1"), true);
 		first(ScanScope.OBJECTS, ValueType.INT32, ScanMode.UNKNOWN, "");
-		dbg.pauseGame();
+		PauseGate.hold();
 		assertTrue(dbg.isFreezeTimerRunning());
 
 		dbg.onMidletDestroyed();
@@ -127,8 +126,6 @@ public class LifecycleTest extends DebuggerTestBase {
 		}));
 		// nothing throws once the game is gone
 		assertNull(dbg.read(dbg.watches().get(0)));
-		dbg.pauseGame();
-		assertFalse(PauseGate.isPaused());
 		try {
 			first(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.EXACT, "1");
 			org.junit.Assert.fail();

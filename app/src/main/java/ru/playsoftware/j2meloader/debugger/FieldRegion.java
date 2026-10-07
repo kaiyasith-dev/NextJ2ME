@@ -68,10 +68,6 @@ final class FieldRegion extends MemoryRegion {
 		return v;
 	}
 
-	ClassInfo classInfo() {
-		return info;
-	}
-
 	boolean isStaticRegion() {
 		return isStatic;
 	}

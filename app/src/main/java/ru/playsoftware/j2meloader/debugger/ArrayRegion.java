@@ -62,21 +62,8 @@ final class ArrayRegion extends MemoryRegion {
 		return v;
 	}
 
-	static boolean isPrimitiveArray(Object o) {
-		Class<?> comp = o.getClass().getComponentType();
-		return comp != null && comp.isPrimitive();
-	}
-
 	ValueType elementType() {
 		return elem;
-	}
-
-	int elementCount() {
-		return length;
-	}
-
-	boolean isRaw() {
-		return raw;
 	}
 
 	@Override

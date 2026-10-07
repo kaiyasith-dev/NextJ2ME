@@ -31,27 +31,34 @@ public final class ScanSession {
 		public final long results;
 		public final long millis;
 		public final boolean truncated;
-		/** Free text for steps that are not scans (an import); null for scans. */
-		public final String note;
+		/** The results as they were right after this step; null once dropped to save memory. */
+		private MemorySnapshot snapshot;
+		private int matchLength;
+		/** Whether the session had hit its candidate limit at this step. */
+		private boolean incomplete;
 
-		Step(ScanMode mode, String value, long results, long millis, boolean truncated, String note) {
+		Step(ScanMode mode, String value, long results, long millis, boolean truncated) {
 			this.mode = mode;
 			this.value = value;
 			this.results = results;
 			this.millis = millis;
 			this.truncated = truncated;
-			this.note = note;
+		}
+
+		/** Whether the results of this step are still available for {@link MemoryDebugger#restoreScanStep}. */
+		public boolean isRestorable() {
+			return snapshot != null;
 		}
 
 		@Override
 		public String toString() {
-			if (note != null) {
-				return note + " → " + results;
-			}
 			String v = mode.needsValue() ? " " + value : "";
 			return mode.label() + v + " → " + results + (truncated ? "+" : "") + " (" + millis + " ms)";
 		}
 	}
+
+	/** Candidates the history of one session may keep in total (the newest step is always kept). */
+	static final long MAX_RETAINED_CANDIDATES = 3_000_000;
 
 	public final int id;
 	public final int generation;
@@ -82,22 +89,73 @@ public final class ScanSession {
 	}
 
 	void update(MemorySnapshot s, boolean wasTruncated, Step step, int newMatchLength) {
-		this.snapshot = s;
-		this.truncated = wasTruncated;
-		if (newMatchLength > 0) {
-			this.matchLength = newMatchLength;
-		}
 		synchronized (history) {
+			this.snapshot = s;
+			this.truncated = wasTruncated;
+			if (newMatchLength > 0) {
+				this.matchLength = newMatchLength;
+			}
+			step.snapshot = s;
+			step.matchLength = this.matchLength;
+			step.incomplete = wasTruncated;
 			history.add(step);
+			dropOldSnapshots();
+		}
+	}
+
+	/** Keeps the results of recent steps only, so a long history cannot exhaust the game's heap. */
+	private void dropOldSnapshots() {
+		long total = retainedCount();
+		for (int i = 0; i < history.size() - 1 && total > MAX_RETAINED_CANDIDATES; i++) {
+			Step old = history.get(i);
+			if (old.snapshot != null) {
+				total -= old.snapshot.size();
+				old.snapshot = null;
+			}
+		}
+	}
+
+	/** Candidates held by this session across all kept steps. */
+	long retainedCount() {
+		synchronized (history) {
+			long total = 0;
+			for (Step st : history) {
+				if (st.snapshot != null) {
+					total += st.snapshot.size();
+				}
+			}
+			return total;
+		}
+	}
+
+	/**
+	 * Goes back to the results of an earlier step: they become the current results again and the
+	 * later steps are discarded, so the next scan filters them as if it had just been done.
+	 *
+	 * @throws IllegalArgumentException if there is no such step
+	 * @throws IllegalStateException    if the step's results were dropped to save memory
+	 */
+	void restoreTo(int index) {
+		synchronized (history) {
+			if (index < 0 || index >= history.size()) {
+				throw new IllegalArgumentException("There is no step " + (index + 1));
+			}
+			Step st = history.get(index);
+			if (st.snapshot == null) {
+				throw new IllegalStateException("The results of step " + (index + 1)
+						+ " were not kept to save memory");
+			}
+			while (history.size() > index + 1) {
+				history.remove(history.size() - 1);
+			}
+			this.snapshot = st.snapshot;
+			this.truncated = st.incomplete;
+			this.matchLength = st.matchLength;
 		}
 	}
 
 	Step step(ScanMode mode, String value, long results, long millis, boolean truncated) {
-		return new Step(mode, value, results, millis, truncated, null);
-	}
-
-	Step note(String text, long results) {
-		return new Step(ScanMode.UNKNOWN, "", results, 0, false, text);
+		return new Step(mode, value, results, millis, truncated);
 	}
 
 	public List<Step> history() {
@@ -117,11 +175,6 @@ public final class ScanSession {
 
 	public int matchLength() {
 		return matchLength;
-	}
-
-	/** Whether a next scan is possible. */
-	public boolean hasResults() {
-		return resultCount() > 0;
 	}
 
 	public String title() {

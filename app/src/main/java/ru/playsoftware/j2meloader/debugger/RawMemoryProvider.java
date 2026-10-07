@@ -31,10 +31,6 @@ public final class RawMemoryProvider implements MemoryProvider {
 		this.maxObjects = maxObjects;
 	}
 
-	public AddressSpace addressSpace() {
-		return space;
-	}
-
 	@Override
 	public ScanScope scope() {
 		return ScanScope.RAW;
