@@ -10,7 +10,7 @@ android {
     namespace 'ru.playsoftware.j2meloader'
 
     defaultConfig {
-        applicationId "ru.playsoftware.j2meloader"
+        applicationId "com.ksdev.nextj2me"
         minSdk MIN_SDK
         targetSdk TARGET_SDK
         versionCode 101
@@ -118,7 +118,7 @@ android {
 
     applicationVariants.all {
         if (buildType.name == 'debug' && flavorName != 'midlet') {
-            resValue 'string', 'app_name', 'JL-Debug'
+            resValue 'string', 'app_name', 'NextJ2ME-Debug'
         }
         def baseName = flavorName == 'midlet' ? "${midletArchivesBaseName}-" : "${rootProject.name}-"
         outputs.all {

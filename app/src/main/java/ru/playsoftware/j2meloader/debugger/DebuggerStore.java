@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -161,7 +163,7 @@ public final class DebuggerStore {
 
 	private static void applySettings(SettingsDto s, DebuggerSettings out) {
 		ScanParams p = out.scan;
-		p.scope = enumOf(ScanScope.class, s.scope, p.scope);
+		// the scan source is deliberately not restored: every launch starts on the default (Raw memory)
 		p.type = enumOf(ValueType.class, s.type, p.type);
 		p.mode = enumOf(ScanMode.class, s.mode, p.mode);
 		p.value = s.value == null ? "" : s.value;
@@ -231,7 +233,6 @@ public final class DebuggerStore {
 		dto.appId = appId;
 		SettingsDto s = new SettingsDto();
 		ScanParams p = settings.scan;
-		s.scope = p.scope.name();
 		s.type = p.type.name();
 		s.mode = p.mode.name();
 		s.value = p.value;

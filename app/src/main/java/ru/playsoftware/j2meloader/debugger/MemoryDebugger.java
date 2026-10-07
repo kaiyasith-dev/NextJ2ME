@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -149,6 +151,8 @@ public final class MemoryDebugger {
 	private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
 	private final AtomicLong uidGen = new AtomicLong(1);
 	private final AtomicBoolean saveQueued = new AtomicBoolean();
+	/** Things the user should be told (dropped scans or history); read with {@link #takeNotices()}. */
+	private final CopyOnWriteArrayList<String> notices = new CopyOnWriteArrayList<>();
 
 	private final List<ScanSession> sessions = new ArrayList<>();
 	private ScanSession activeSession;
@@ -431,6 +435,15 @@ public final class MemoryDebugger {
 		fire();
 	}
 
+	/** Discards every scan and its history (long press on "Reset"). */
+	public void resetAllScans() {
+		synchronized (sessions) {
+			sessions.clear();
+			activeSession = null;
+		}
+		fire();
+	}
+
 	private void addSession(ScanSession s) {
 		synchronized (sessions) {
 			sessions.add(s);
@@ -439,11 +452,29 @@ public final class MemoryDebugger {
 		}
 	}
 
-	/** Forgets the oldest scans when there are too many or they hold too many candidates. */
+	/** The oldest scan that is not the active one, or null if there is none. */
+	private ScanSession oldestInactive() {
+		for (ScanSession x : sessions) {
+			if (x != activeSession) {
+				return x;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Forgets the oldest scans when there are too many or they hold too many candidates, and
+	 * remembers what was dropped so the UI can say so.
+	 */
 	private void enforceSessionLimits() {
 		synchronized (sessions) {
 			while (sessions.size() > MAX_SESSIONS) {
-				sessions.remove(0);
+				ScanSession old = oldestInactive();
+				if (old == null) {
+					break;
+				}
+				sessions.remove(old);
+				notices.add("Scan #" + old.id + " was removed: at most " + MAX_SESSIONS + " scans are kept.");
 			}
 			long total = 0;
 			for (ScanSession x : sessions) {
@@ -451,9 +482,53 @@ public final class MemoryDebugger {
 			}
 			// keep the game's heap safe: forget the oldest scans first, never the active one
 			while (total > MAX_TOTAL_CANDIDATES && sessions.size() > 1) {
-				ScanSession old = sessions.get(0) == activeSession ? sessions.get(1) : sessions.get(0);
+				ScanSession old = oldestInactive();
+				if (old == null) {
+					break;
+				}
 				sessions.remove(old);
 				total -= old.retainedCount();
+				notices.add("Scan #" + old.id + " was removed to save memory.");
+			}
+		}
+	}
+
+	/** Messages about results dropped since the last call (cleared by reading them). */
+	public List<String> takeNotices() {
+		List<String> out = new ArrayList<>(notices);
+		notices.removeAll(out);
+		return out;
+	}
+
+	/** Tells the user when a scan had to drop the results of its older steps. */
+	private void reportDroppedSteps(ScanSession s) {
+		int dropped = s.takeDroppedSteps();
+		if (dropped > 0) {
+			notices.add("Scan #" + s.id + ": the results of " + dropped + " older step"
+					+ (dropped == 1 ? " were" : "s were") + " dropped to save memory. "
+					+ "You can no longer go back to " + (dropped == 1 ? "it." : "them."));
+		}
+	}
+
+	/**
+	 * Frees as much scan memory as possible after an out-of-memory error: keeps only the active
+	 * scan and only its newest results.
+	 */
+	void releaseMemory() {
+		synchronized (sessions) {
+			ScanSession keep = activeSession;
+			for (ScanSession x : new ArrayList<>(sessions)) {
+				if (x != keep) {
+					sessions.remove(x);
+					notices.add("Scan #" + x.id + " was removed to free memory.");
+				}
+			}
+			if (keep != null) {
+				int dropped = keep.dropAllButNewestSnapshot();
+				if (dropped > 0) {
+					notices.add("Scan #" + keep.id + ": " + dropped + " older step"
+							+ (dropped == 1 ? "" : "s") + " dropped to free memory.");
+				}
 			}
 		}
 	}
@@ -488,6 +563,7 @@ public final class MemoryDebugger {
 		}
 		runScan(session, params, true, progress, cancel);
 		addSession(session);
+		reportDroppedSteps(session);
 		rememberScanSettings(params);
 		return session;
 	}
@@ -504,6 +580,7 @@ public final class MemoryDebugger {
 		}
 		runScan(session, p.copy(), false, progress, cancel);
 		rememberScanSettings(p);
+		reportDroppedSteps(session);
 		enforceSessionLimits();
 		return session;
 	}
@@ -594,7 +671,9 @@ public final class MemoryDebugger {
 					l.onError(e.getMessage());
 				} catch (OutOfMemoryError e) {
 					scanning = false;
-					l.onError("Out of memory during the scan. Narrow the scope or type, or lower the result limit.");
+					releaseMemory();
+					l.onError("Out of memory during the scan. Older scans were cleared to free memory. "
+							+ "Narrow the scope or type and try again.");
 				} catch (RuntimeException e) {
 					scanning = false;
 					l.onError("Scan failed: " + e);

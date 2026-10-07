@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Nikita Shakarun
+ * Copyright 2026 ksdev
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,12 +36,8 @@ public class AboutDialogFragment extends DialogFragment {
 	public Dialog onCreateDialog(Bundle savedInstanceState) {
 		StringBuilder message = new StringBuilder().append(getText(R.string.version))
 				.append(BuildConfig.VERSION_NAME)
-				.append(getText(R.string.about_email))
+				.append(getText(R.string.about_fork))
 				.append(getText(R.string.about_github))
-				.append(getText(R.string.about_4pda))
-				.append(getText(R.string.about_xda))
-				.append(getText(R.string.about_emugen_wiki))
-				.append(getText(R.string.about_crowdin))
 				.append(getText(R.string.about_copyright));
 		TextView tv = new TextView(getActivity());
 		tv.setText(Html.fromHtml(message.toString()));

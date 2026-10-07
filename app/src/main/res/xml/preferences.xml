@@ -59,7 +59,7 @@
         android:key="emulator_dir"
         android:icon="@drawable/ic_setting_folder"
         android:title="@string/pref_emulator_dir"
-        tools:summary="/sdcard/J2ME-Loader" />
+        tools:summary="/sdcard/NextJ2ME" />
     <PreferenceCategory android:title="@string/pref_category_experimental">
         <SwitchPreferenceCompat
             android:key="micro3d_using_message"
@@ -72,7 +72,7 @@
         <SwitchPreferenceCompat
             android:key="pref_memory_debugger"
             app:defaultValue="false"
-            android:icon="@drawable/ic_setting_default"
+            android:icon="@drawable/ic_setting_memory_debugger"
             android:title="@string/pref_memory_debugger_title"
             android:summary="@string/pref_memory_debugger_summary" />
     </PreferenceCategory>

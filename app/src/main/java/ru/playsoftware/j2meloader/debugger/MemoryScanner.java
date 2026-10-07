@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -44,6 +46,8 @@ public final class MemoryScanner {
 		}
 	};
 
+	/** A group scan gives up on a region where one value matches this often (it would need huge lists). */
+	static final int GROUP_MATCH_CAP = 200_000;
 	private static final int CHUNK = 8192;
 	private static final int BYTE_CHUNK = 1 << 16;
 	private static final long PROGRESS_INTERVAL_MS = 80;
@@ -76,6 +80,12 @@ public final class MemoryScanner {
 			throw new CancellationException("Scan cancelled");
 		}
 		long ms = System.currentTimeMillis() - t0;
+		c.snapshot.seal();
+		if (c.groupSkipped > 0) {
+			session.setWarning(c.groupSkipped + (c.groupSkipped == 1 ? " region was" : " regions were")
+					+ " skipped: a value matched more than " + GROUP_MATCH_CAP + " times there. "
+					+ "Use rarer values or a different scope.");
+		}
 		session.update(c.snapshot, c.truncated,
 				session.step(p.mode, p.value, c.snapshot.size(), ms, c.truncated), c.matchLength);
 	}
@@ -99,6 +109,9 @@ public final class MemoryScanner {
 		int matchLength;
 		long regions;
 		long lastReport;
+		/** Group scan: regions skipped because a value matched too often, and the current region's state. */
+		int groupSkipped;
+		boolean groupOverflow;
 
 		Collector(ScanParams p, MemoryValue target, Progress progress, CancelToken cancel) {
 			this.p = p;
@@ -229,8 +242,15 @@ public final class MemoryScanner {
 		}
 
 		private void collect(GroupMatcher.IntList[] lists, int pos, long bits) {
+			if (groupOverflow) {
+				return;
+			}
 			for (int j = 0; j < groupBits.length; j++) {
 				if (type.valueEquals(bits, groupBits[j])) {
+					if (lists[j].size >= GROUP_MATCH_CAP) {
+						groupOverflow = true; // too common here: stop collecting, the region is skipped
+						return;
+					}
 					lists[j].add(pos);
 				}
 			}
@@ -243,6 +263,7 @@ public final class MemoryScanner {
 		private void groupRegion(MemoryRegion r) {
 			boolean raw = r.isByteAddressable();
 			int step = raw ? p.rawStep() : 1;
+			groupOverflow = false;
 			GroupMatcher.IntList[] lists = new GroupMatcher.IntList[groupBits.length];
 			for (int j = 0; j < lists.length; j++) {
 				lists[j] = new GroupMatcher.IntList();
@@ -285,6 +306,10 @@ public final class MemoryScanner {
 						collect(lists, idx, r.readRaw(slots[idx], type, be));
 					}
 				}
+			}
+			if (groupOverflow) {
+				groupSkipped++;
+				return;
 			}
 			// the fields of one object or class belong together by definition: no window there
 			boolean fields = !raw && r.kind() != MemoryRegion.Kind.ARRAY;
@@ -491,6 +516,7 @@ public final class MemoryScanner {
 			}
 		}
 		long ms = System.currentTimeMillis() - t0;
+		neu.seal();
 		session.update(neu, session.isTruncated(),
 				session.step(mode, q.value, neu.size(), ms, false), matchLength);
 	}

@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -73,6 +75,10 @@ public final class ScanSession {
 	private volatile boolean truncated;
 	/** Length in bytes of byte/string matches in raw memory. */
 	private volatile int matchLength;
+	/** Something the user should know about the results (for example skipped regions). */
+	private volatile String warning;
+	/** Steps whose results were dropped since the last {@link #takeDroppedSteps()}. */
+	private int droppedSteps;
 
 	ScanSession(int id, int generation, ScanParams p) {
 		this.id = id;
@@ -111,8 +117,42 @@ public final class ScanSession {
 			if (old.snapshot != null) {
 				total -= old.snapshot.size();
 				old.snapshot = null;
+				droppedSteps++;
 			}
 		}
+	}
+
+	/** Drops the results of every step except the newest, to free memory. Returns how many were dropped. */
+	int dropAllButNewestSnapshot() {
+		synchronized (history) {
+			int n = 0;
+			for (int i = 0; i < history.size() - 1; i++) {
+				Step st = history.get(i);
+				if (st.snapshot != null) {
+					st.snapshot = null;
+					n++;
+				}
+			}
+			return n;
+		}
+	}
+
+	/** How many steps lost their results since the last call; resets the counter. */
+	int takeDroppedSteps() {
+		synchronized (history) {
+			int n = droppedSteps;
+			droppedSteps = 0;
+			return n;
+		}
+	}
+
+	void setWarning(String text) {
+		this.warning = text;
+	}
+
+	/** A note about the results (e.g. regions that were skipped), or null. */
+	public String warning() {
+		return warning;
 	}
 
 	/** Candidates held by this session across all kept steps. */

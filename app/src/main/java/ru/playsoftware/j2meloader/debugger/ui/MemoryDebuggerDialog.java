@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -593,6 +595,10 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		b.btnNewScan.setOnClickListener(v -> startScan(true));
 		b.btnNextScan.setOnClickListener(v -> startScan(false));
 		b.btnResetScan.setOnClickListener(v -> confirmReset());
+		b.btnResetScan.setOnLongClickListener(v -> {
+			confirmResetAll();
+			return true;
+		});
 		b.btnCancelScan.setOnClickListener(v -> dbg.cancelScan());
 		b.btnHistory.setOnClickListener(v -> showHistory());
 		b.btnMoreResults.setOnClickListener(v -> {
@@ -679,6 +685,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 					syncControlsToSession(session);
 					syncResultsWithSession();
 					refreshSessions();
+					showNotices();
 				});
 			}
 
@@ -697,8 +704,13 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				main.post(() -> {
 					if (b != null && isAdded()) {
 						setScanning(false);
-						b.scanStatus.setText(message);
 						toast(message);
+						// scans may have been dropped to free memory: refresh the lists first
+						shownSession = null;
+						syncResultsWithSession();
+						refreshSessions();
+						b.scanStatus.setText(message);
+						showNotices();
 					}
 				});
 			}
@@ -760,11 +772,39 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			b.scanStatus.setText(R.string.memdbg_no_scan);
 			return;
 		}
+		int count = dbg.sessions().size();
+		String message = getString(R.string.memdbg_reset_confirm_message);
+		if (count > 1) {
+			message += "\n\n" + getString(R.string.memdbg_reset_hint, count);
+		}
 		new AlertDialog.Builder(requireContext())
 				.setTitle(R.string.memdbg_reset_confirm_title)
-				.setMessage(R.string.memdbg_reset_confirm_message)
+				.setMessage(message)
 				.setPositiveButton(R.string.memdbg_reset_scan, (d, w) -> {
 					dbg.resetScan();
+					resultLimit = RESULT_PAGE;
+					b.scanStatus.setText("");
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	/** Holding Reset clears every scan at once, after a confirmation. */
+	private void confirmResetAll() {
+		final int count = dbg.sessions().size();
+		if (count == 0) {
+			b.scanStatus.setText(R.string.memdbg_no_scan);
+			return;
+		}
+		if (count == 1) {
+			confirmReset(); // nothing more to clear than the one scan
+			return;
+		}
+		new AlertDialog.Builder(requireContext())
+				.setTitle(R.string.memdbg_reset_all_title)
+				.setMessage(getString(R.string.memdbg_reset_all_message, count))
+				.setPositiveButton(R.string.memdbg_reset_scan, (d, w) -> {
+					dbg.resetAllScans();
 					resultLimit = RESULT_PAGE;
 					b.scanStatus.setText("");
 				})
@@ -813,6 +853,21 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	// ------------------------------------------------------------------ results
 
+	/** Tells the user what the debugger had to drop to save memory. */
+	private void showNotices() {
+		List<String> notices = dbg.takeNotices();
+		if (!notices.isEmpty() && isAdded()) {
+			StringBuilder sb = new StringBuilder();
+			for (String n : notices) {
+				if (sb.length() > 0) {
+					sb.append('\n');
+				}
+				sb.append(n);
+			}
+			Toast.makeText(requireContext(), sb.toString(), Toast.LENGTH_LONG).show();
+		}
+	}
+
 	/** Re-renders the result list when the active session or its size changed. */
 	private void syncResultsWithSession() {
 		if (b == null) {
@@ -836,8 +891,10 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			b.btnMoreResults.setVisibility(View.GONE);
 			return;
 		}
-		b.scanStatus.setText(getString(s.isTruncated() ? R.string.memdbg_scan_truncated : R.string.memdbg_scan_done,
-				(int) s.resultCount()));
+		String status = getString(s.isTruncated() ? R.string.memdbg_scan_truncated : R.string.memdbg_scan_done,
+				(int) s.resultCount());
+		String warning = s.warning();
+		b.scanStatus.setText(warning == null ? status : status + "\n" + warning);
 		LayoutInflater inflater = LayoutInflater.from(requireContext());
 		for (MemoryDebugger.ScanResult r : dbg.results(s, 0, resultLimit)) {
 			View row = inflater.inflate(R.layout.list_row_debug, b.resultsContainer, false);

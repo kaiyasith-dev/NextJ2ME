@@ -1,6 +1,7 @@
 /*
  * Copyright 2018 Nikita Shakarun
  * Copyright 2022 Arman Jussupgaliyev
+ * Copyright 2026 ksdev
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +68,7 @@ public class Config {
 
 	static {
 		Context context = ContextHolder.getAppContext();
-		String appName = "J2ME-Loader";
+		String appName = "NextJ2ME";
 		if (!BuildConfig.FULL_EMULATOR) {
 			appName = context.getString(R.string.app_name);
 		}

@@ -6,10 +6,6 @@
         android:id="@+id/action_save_log"
         android:title="@string/save_log" />
     <item
-        android:id="@+id/action_memory_debugger"
-        android:title="@string/memdbg_menu"
-        android:visible="false" />
-    <item
         android:id="@+id/action_lock_orientation"
         android:title="@string/action_lock_orientation"
         android:checkable="true"
@@ -51,4 +47,9 @@
             </menu>
         </item>
     </group>
+    <item
+        android:id="@+id/action_memory_debugger"
+        android:icon="@drawable/ic_action_memory"
+        android:title="@string/memdbg_menu"
+        android:visible="false" />
 </menu>

@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -332,6 +334,21 @@ public class ScannerTest extends DebuggerTestBase {
 		assertSame(b, dbg.activeSession());
 		dbg.resetScan();
 		assertEquals(0, dbg.sessions().size());
+	}
+
+	@Test
+	public void resetAllClearsEverySessionAtOnce() {
+		first(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.EXACT, "100");
+		first(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.EXACT, "5000");
+		first(ScanScope.OBJECTS, ValueType.INT32, ScanMode.UNKNOWN, "");
+		assertEquals(3, dbg.sessions().size());
+		dbg.resetAllScans();
+		assertEquals(0, dbg.sessions().size());
+		assertTrue(dbg.activeSession() == null);
+		dbg.resetAllScans(); // nothing left: harmless
+		// a new scan works as usual afterwards
+		assertEquals(1, first(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.EXACT, "100").resultCount());
+		assertEquals(1, dbg.sessions().size());
 	}
 
 	@Test

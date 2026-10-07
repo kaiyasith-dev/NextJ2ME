@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -40,6 +42,17 @@ public final class MemorySnapshot {
 			this.slots = new int[capacity];
 			this.bits = new long[capacity];
 			this.objs = objects ? new Object[capacity] : null;
+		}
+
+		/** Gives back the unused tail of the arrays (they grow by half, so up to a third may be spare). */
+		void trim() {
+			if (slots.length - count > Math.max(16, count >> 3)) {
+				slots = Arrays.copyOf(slots, count);
+				bits = Arrays.copyOf(bits, count);
+				if (objs != null) {
+					objs = Arrays.copyOf(objs, count);
+				}
+			}
 		}
 
 		void add(int slot, long value, Object obj) {
@@ -92,6 +105,13 @@ public final class MemorySnapshot {
 
 	void added() {
 		size++;
+	}
+
+	/** Call once the scan is complete: trims every block so a kept snapshot holds no spare memory. */
+	void seal() {
+		for (Block b : blocks) {
+			b.trim();
+		}
 	}
 
 	List<Block> blocks() {

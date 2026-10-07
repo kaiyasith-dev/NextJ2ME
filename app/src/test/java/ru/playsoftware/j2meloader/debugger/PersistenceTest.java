@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -128,7 +130,7 @@ public class PersistenceTest extends DebuggerTestBase {
 
 		MemoryDebugger again = relaunch();
 		ScanParams q = again.settings().scan;
-		assertEquals(ScanScope.OBJECTS, q.scope);
+		assertEquals("scan source always starts on the default", ScanScope.RAW, q.scope);
 		assertEquals(ValueType.FLOAT, q.type);
 		assertEquals("1.5", q.value);
 		assertFalse(q.bigEndian);
@@ -182,7 +184,7 @@ public class PersistenceTest extends DebuggerTestBase {
 		dbg = newDebugger();
 		assertEquals(1, dbg.watches().size());
 		assertEquals("good", dbg.watches().get(0).name());
-		assertEquals("unknown enum falls back to the default", ScanScope.STATIC_FIELDS, dbg.settings().scan.scope);
+		assertEquals("unknown enum falls back to the default", ScanScope.RAW, dbg.settings().scan.scope);
 		assertEquals(ValueType.INT16, dbg.settings().scan.type);
 	}
 

@@ -1,4 +1,6 @@
 /*
+ * Copyright 2026 ksdev
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,8 +21,10 @@ public final class ScanParams {
 	public static final int DEFAULT_MAX_CANDIDATES = 2_000_000;
 	public static final int DEFAULT_GROUP_WINDOW = 8;
 	public static final int MAX_GROUP_WINDOW = 1_000_000;
+	/** Most values a group scan accepts; keeps its temporary lists small. */
+	public static final int MAX_GROUP_VALUES = 16;
 
-	public ScanScope scope = ScanScope.STATIC_FIELDS;
+	public ScanScope scope = ScanScope.RAW;
 	public ValueType type = ValueType.INT32;
 	public ScanMode mode = ScanMode.EXACT;
 	/** The value for modes that need one (exact, equal to, increased by, ...). */
@@ -159,6 +163,9 @@ public final class ScanParams {
 		}
 		if (out.size() < 2) {
 			throw new IllegalArgumentException("Enter at least two values separated by ;");
+		}
+		if (out.size() > MAX_GROUP_VALUES) {
+			throw new IllegalArgumentException("A group can have at most " + MAX_GROUP_VALUES + " values");
 		}
 		long[] bits = new long[out.size()];
 		for (int i = 0; i < bits.length; i++) {
