@@ -10,7 +10,7 @@ android {
     namespace 'ru.playsoftware.j2meloader'
 
     defaultConfig {
-        applicationId "com.ksdev.nextj2me"
+        applicationId "com.ksdevla.nextj2me"
         minSdk MIN_SDK
         targetSdk TARGET_SDK
         versionCode 101

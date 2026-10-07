@@ -3,7 +3,7 @@
  * Copyright 2017-2018 Nikita Shakarun
  * Copyright 2019-2022 Yury Kharchenko
  * Copyright 2022-2024 Arman Jussupgaliyev
- * Copyright 2026 ksdev
+ * Copyright 2026 ksdevla
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

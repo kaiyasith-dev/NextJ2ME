@@ -58,7 +58,7 @@ Bug reports, feature requests and pull requests are welcome through the [issue t
 
 ## Credits and license
 
-NextJ2ME is built on the work of the J2ME Loader authors. Their copyright notices are kept in every source file, and the new code is marked `Copyright 2026 ksdev`.
+NextJ2ME is built on the work of the J2ME Loader authors. Their copyright notices are kept in every source file, and the new code is marked `Copyright 2026 ksdevla`.
 
 > Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0). See the [LICENSE](LICENSE) file for the whole license text.
 
