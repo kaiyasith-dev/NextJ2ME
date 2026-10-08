@@ -20,4 +20,13 @@
         android:gravity="center"
         android:text="@string/loading_info" />
 
+    <Button
+        android:id="@+id/installation_change_name"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="@string/install_change_name"
+        android:visibility="gone" />
+
 </LinearLayout>

@@ -39,11 +39,20 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import javax.microedition.util.ContextHolder;
+
+import androidx.preference.PreferenceManager;
+
 import ru.playsoftware.j2meloader.R;
+import ru.playsoftware.j2meloader.config.Config;
+import ru.playsoftware.j2meloader.config.ScreenInfo;
+import ru.playsoftware.j2meloader.config.ScreenInfoCache;
 import ru.playsoftware.j2meloader.databinding.ListRowJarBinding;
 import ru.playsoftware.j2meloader.util.AppSizeCache;
 import ru.playsoftware.j2meloader.util.AppUtils;
 import ru.playsoftware.j2meloader.util.StorageSize;
+
+import static ru.playsoftware.j2meloader.util.Constants.PREF_DEFAULT_PROFILE;
 
 public class AppsListAdapter extends BaseAdapter implements Filterable {
 	private static final long MIN_REFRESH_INTERVAL_MS = 2000;
@@ -55,6 +64,9 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 	/** Size in bytes (game files plus saved data) per app folder; filled in the background. */
 	private final Map<String, Long> sizes = new HashMap<>();
 	private final AppSizeCache sizeCache = new AppSizeCache();
+	/** Screen settings (resolution, scaling, orientation) per app folder; filled in the background. */
+	private final Map<String, ScreenInfo> screens = new HashMap<>();
+	private final ScreenInfoCache screenCache = new ScreenInfoCache();
 	private long lastSizeRefresh;
 	private final ExecutorService sizeExecutor = Executors.newSingleThreadExecutor(r -> {
 		Thread t = new Thread(r, "AppSizes");
@@ -106,6 +118,13 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 		Long size = sizes.get(item.getPath());
 		holder.binding.appSize.setText(size == null ? "" : parent.getContext()
 				.getString(R.string.size_kb, StorageSize.formatKb(size, Locale.getDefault())));
+		ScreenInfo screen = screens.get(item.getPath());
+		if (screen == null) {
+			holder.binding.appResolution.setVisibility(View.GONE);
+		} else {
+			holder.binding.appResolution.setText(screen.resolution());
+			holder.binding.appResolution.setVisibility(View.VISIBLE);
+		}
 
 		return view;
 	}
@@ -132,9 +151,16 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 		lastSizeRefresh = System.currentTimeMillis();
 		final List<AppItem> snapshot = new ArrayList<>(list);
 		final int generation = ++sizeGeneration;
+		// games without settings of their own will use the default profile
+		String defaultProfile = PreferenceManager.getDefaultSharedPreferences(ContextHolder.getAppContext())
+				.getString(PREF_DEFAULT_PROFILE, null);
+		final File defaultConfig = defaultProfile == null ? null : new File(
+				new File(Config.getProfilesDir(), defaultProfile), Config.MIDLET_CONFIG_FILE);
+		final String configsDir = Config.getConfigsDir();
 		try {
 			sizeExecutor.execute(() -> {
 				Map<String, Long> measured = new HashMap<>();
+				Map<String, ScreenInfo> measuredScreens = new HashMap<>();
 				Set<String> paths = new HashSet<>();
 				for (AppItem item : snapshot) {
 					if (generation != sizeGeneration) {
@@ -143,13 +169,23 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 					paths.add(item.getPath());
 					measured.put(item.getPath(), sizeCache.totalSize(item.getPath(),
 							new File(item.getPathExt()), AppUtils.getDataDir(item)));
+					ScreenInfo screen = screenCache.get(item.getPath(),
+							new File(new File(configsDir, item.getPath()), Config.MIDLET_CONFIG_FILE),
+							defaultConfig);
+					if (screen != null) {
+						measuredScreens.put(item.getPath(), screen);
+					}
 				}
 				sizeCache.retainOnly(paths);
+				screenCache.retainOnly(paths);
 				mainHandler.post(() -> {
-					if (generation == sizeGeneration && !sizes.equals(measured)) {
+					if (generation == sizeGeneration
+						&& (!sizes.equals(measured) || !screens.equals(measuredScreens))) {
 						// only redraw when something changed
 						sizes.clear();
 						sizes.putAll(measured);
+						screens.clear();
+						screens.putAll(measuredScreens);
 						notifyDataSetChanged();
 					}
 				});

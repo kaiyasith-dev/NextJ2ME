@@ -18,6 +18,7 @@ package ru.playsoftware.j2meloader.debugger;
 
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 
@@ -88,6 +89,61 @@ public final class MemoryScanner {
 		}
 		session.update(c.snapshot, c.truncated,
 				session.step(p.mode, p.value, c.snapshot.size(), ms, c.truncated), c.matchLength);
+	}
+
+	/**
+	 * First scan of an "any integer size" scan. The sessions each have one integer type; they are
+	 * all filled during a single walk over the provider's regions, so it costs little more than a
+	 * normal scan. The candidate limit is shared between them.
+	 */
+	public void firstScanFuzzy(List<ScanSession> sessions, ScanParams p, Progress progress, CancelToken cancel) {
+		long t0 = System.currentTimeMillis();
+		final int n = sessions.size();
+		MemoryProvider prov = provider(p.scope);
+		final Progress prog = progress == null ? NO_PROGRESS : progress;
+		final Collector[] collectors = new Collector[n];
+		for (int i = 0; i < n; i++) {
+			ScanParams pt = p.copy();
+			pt.fuzzy = false;
+			pt.group = false;
+			pt.type = sessions.get(i).type;
+			pt.maxCandidates = Math.max(1, p.maxCandidates / n);
+			collectors[i] = new Collector(pt, pt.validate(true), NO_PROGRESS, cancel);
+		}
+		final long[] regions = {0};
+		final long[] lastReport = {0};
+		prov.enumerate(new VmInspector.RegionSink() {
+			@Override
+			public boolean accept(MemoryRegion region) {
+				boolean any = false;
+				for (Collector c : collectors) {
+					if (c.accept(region)) {
+						any = true;
+					}
+				}
+				regions[0]++;
+				long now = System.currentTimeMillis();
+				if (now - lastReport[0] > PROGRESS_INTERVAL_MS) {
+					lastReport[0] = now;
+					long total = 0;
+					for (Collector c : collectors) {
+						total += c.snapshot.size();
+					}
+					prog.onProgress(regions[0], total);
+				}
+				return any && !cancel.isCancelled();
+			}
+		}, cancel);
+		if (cancel.isCancelled()) {
+			throw new CancellationException("Scan cancelled");
+		}
+		long ms = System.currentTimeMillis() - t0;
+		for (int i = 0; i < n; i++) {
+			Collector c = collectors[i];
+			c.snapshot.seal();
+			sessions.get(i).update(c.snapshot, c.truncated,
+					sessions.get(i).step(p.mode, p.value, c.snapshot.size(), ms, c.truncated), c.matchLength);
+		}
 	}
 
 	private final class Collector implements VmInspector.RegionSink {

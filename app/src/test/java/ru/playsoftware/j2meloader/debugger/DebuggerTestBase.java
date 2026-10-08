@@ -41,15 +41,9 @@ public abstract class DebuggerTestBase {
 	protected File storeFile;
 	protected MemoryDebugger dbg;
 
-	/** Set when the debugger asks for roots while the pause gate is closed (i.e. during a paused scan). */
-	protected volatile boolean sawPaused;
-
 	protected final RootSource roots = new RootSource() {
 		@Override
 		public Map<String, Object> namedRoots() {
-			if (PauseGate.isPaused()) {
-				sawPaused = true;
-			}
 			Map<String, Object> m = new HashMap<>();
 			if (game != null) {
 				m.put("midlet", game);
@@ -76,7 +70,6 @@ public abstract class DebuggerTestBase {
 		if (dbg != null) {
 			dbg.onMidletDestroyed();
 		}
-		PauseGate.releaseAll();
 		TestGame.reset();
 	}
 
@@ -95,7 +88,6 @@ public abstract class DebuggerTestBase {
 		p.type = type;
 		p.mode = mode;
 		p.value = value;
-		p.pauseDuringScan = false;
 		return p;
 	}
 

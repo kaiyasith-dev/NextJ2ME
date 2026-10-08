@@ -60,6 +60,7 @@
     <string name="invalid_resolution_not_saved">Invalid resolutions: not saved!</string>
     <string name="warn_install_from_net">File will be downloaded from Internet</string>
     <string name="install_details_title">Install details</string>
+    <string name="install_change_name">Change name…</string>
     <string name="install_details_name">Name</string>
     <string name="install_details_vendor">Vendor</string>
     <string name="install_details_version">Version</string>
@@ -321,7 +322,6 @@
     <string name="memdbg_big_endian">Big endian</string>
     <string name="memdbg_alignment">Alignment</string>
     <string name="memdbg_encoding">Text encoding</string>
-    <string name="memdbg_pause_scan">Pause the game while scanning</string>
     <string name="memdbg_new_scan">New scan</string>
     <string name="memdbg_next_scan">Next scan</string>
     <string name="memdbg_reset_scan">Reset</string>
@@ -333,6 +333,7 @@
     <string name="memdbg_scan_truncated">%1$d results (limit reached, narrow the scope or type)</string>
     <string name="memdbg_scan_cancelled">Scan cancelled</string>
     <string name="memdbg_show_more">Show more</string>
+    <string name="memdbg_session_label_any">Scan #%1$d · any size · %2$d results (%3$s)</string>
     <string name="memdbg_session_label">Scan #%1$d · %2$s · %3$d results</string>
     <string name="memdbg_history_empty">No steps yet</string>
     <string name="memdbg_nothing_selected">Nothing selected. Tap a result.</string>
@@ -362,7 +363,10 @@
     <string name="memdbg_freeze_period">Freeze interval (ms)</string>
     <string name="memdbg_open_in_memory">Open in memory view</string>
     <string name="memdbg_no_bytes">String fields have no byte image. Use Raw memory to see text bytes.</string>
-    <string name="memdbg_group">Group scan: several values separated by ;</string>
+    <string name="memdbg_fuzzy">Any integer size</string>
+    <string name="memdbg_fuzzy_hint">Whole number, e.g. 87</string>
+    <string name="memdbg_fuzzy_new_only">Any integer size only works with New scan. The next scans filter all sizes together.</string>
+    <string name="memdbg_group">Group scan</string>
     <string name="memdbg_group_hint">e.g. 100;5000;1</string>
     <string name="memdbg_group_window">Window</string>
     <string name="memdbg_group_new_only">A list of values only works with New scan. Use a single value to filter.</string>

@@ -34,8 +34,6 @@ public final class ScanParams {
 	/** Step between decoded positions in raw memory; 0 means the natural width of the type. */
 	public int alignment = 0;
 	public StringEncoding encoding = StringEncoding.UTF8;
-	/** Park the game's render/event threads while the scan reads its state. */
-	public boolean pauseDuringScan = true;
 	/** Upper bound of remembered candidates; protects the game's heap. */
 	public int maxCandidates = DEFAULT_MAX_CANDIDATES;
 	/** Group scan: {@link #value} holds several values separated by ';' that must occur close together. */
@@ -44,6 +42,11 @@ public final class ScanParams {
 	public int groupWindow = DEFAULT_GROUP_WINDOW;
 	/** Group scan: the values must appear in the order given (not meaningful for object fields). */
 	public boolean groupOrdered;
+	/**
+	 * Fuzzy scan: {@link #value} is a whole number that is searched as every integer size it fits
+	 * (8, 16, 32 and 64 bits) at once; {@link #type} is ignored. Only for a new scan.
+	 */
+	public boolean fuzzy;
 
 	public ScanParams copy() {
 		ScanParams p = new ScanParams();
@@ -54,11 +57,11 @@ public final class ScanParams {
 		p.bigEndian = bigEndian;
 		p.alignment = alignment;
 		p.encoding = encoding;
-		p.pauseDuringScan = pauseDuringScan;
 		p.maxCandidates = maxCandidates;
 		p.group = group;
 		p.groupWindow = groupWindow;
 		p.groupOrdered = groupOrdered;
+		p.fuzzy = fuzzy;
 		return p;
 	}
 
@@ -77,6 +80,9 @@ public final class ScanParams {
 	 * @throws IllegalArgumentException with a message fit for the user
 	 */
 	public MemoryValue validate(boolean firstScan) {
+		if (fuzzy) {
+			return validateFuzzy(firstScan);
+		}
 		if (group) {
 			return validateGroup(firstScan);
 		}
@@ -117,6 +123,60 @@ public final class ScanParams {
 			return v;
 		}
 		return null;
+	}
+
+	/** Integer sizes tried by a fuzzy scan, narrowest first; the signed type is preferred when the value fits. */
+	private static final ValueType[][] FUZZY_TYPES = {
+			{ValueType.INT8, ValueType.UINT8},
+			{ValueType.INT16, ValueType.UINT16},
+			{ValueType.INT32, ValueType.UINT32},
+			{ValueType.INT64, ValueType.UINT64}};
+
+	/**
+	 * The integer types a fuzzy scan searches for {@link #value}: one per size the value fits.
+	 *
+	 * @throws IllegalArgumentException if the value is not a whole number that fits any size
+	 */
+	ValueType[] fuzzyTypes() {
+		String v = value == null ? "" : value.trim();
+		if (v.isEmpty()) {
+			throw new IllegalArgumentException("Enter a whole number to search for");
+		}
+		java.util.List<ValueType> out = new java.util.ArrayList<>();
+		for (ValueType[] sizes : FUZZY_TYPES) {
+			for (ValueType t : sizes) {
+				try {
+					t.parse(v);
+					out.add(t);
+					break; // the signed type of this size, or else the unsigned one
+				} catch (NumberFormatException ignored) {
+					// does not fit this type
+				}
+			}
+		}
+		if (out.isEmpty()) {
+			throw new IllegalArgumentException(
+					"Enter a whole number that fits an integer of 8, 16, 32 or 64 bits");
+		}
+		return out.toArray(new ValueType[0]);
+	}
+
+	private MemoryValue validateFuzzy(boolean firstScan) {
+		if (!firstScan) {
+			throw new IllegalArgumentException("Any integer size is only for a new scan. "
+					+ "Filter its results with a normal scan.");
+		}
+		if (group) {
+			throw new IllegalArgumentException("Any integer size can not be combined with a group scan");
+		}
+		if (mode != ScanMode.EXACT && mode != ScanMode.EQUAL_TO) {
+			throw new IllegalArgumentException("Any integer size uses \"Exact value\"");
+		}
+		if (alignment < 0) {
+			throw new IllegalArgumentException("Alignment must not be negative");
+		}
+		ValueType first = fuzzyTypes()[0];
+		return MemoryValue.ofBits(first, first.parse(value.trim()));
 	}
 
 	private MemoryValue validateGroup(boolean firstScan) {

@@ -122,6 +122,64 @@ public class InstallEditsTest {
 	}
 
 	@Test
+	public void goingBackKeepsTheEarlierEditsAndAddsTheNewOnes() {
+		Map<String, String> original = attrs("MIDlet-Name", "Game", "MIDlet-Vendor", "Acme",
+				"MIDlet-Version", "1.0", "Old-Key", "x");
+		// first pass: rename and drop Old-Key
+		InstallEdits first = InstallEdits.diff(original, attrs("MIDlet-Name", "Game 2", "MIDlet-Vendor", "Acme",
+				"MIDlet-Version", "1.0"));
+		// the dialog is shown again with the edited values, and now only the vendor changes
+		Map<String, String> shownAgain = new HashMap<>(original);
+		first.applyTo(shownAgain);
+		InstallEdits second = InstallEdits.diff(shownAgain, attrs("MIDlet-Name", "Game 2", "MIDlet-Vendor", "Me",
+				"MIDlet-Version", "1.0"));
+
+		InstallEdits both = first.then(second);
+		Map<String, String> result = new HashMap<>(original);
+		both.applyTo(result);
+		assertEquals("Game 2", result.get("MIDlet-Name"));
+		assertEquals("Me", result.get("MIDlet-Vendor"));
+		assertFalse(result.containsKey("Old-Key"));
+		assertEquals("1.0", result.get("MIDlet-Version"));
+	}
+
+	@Test
+	public void aLaterEditWinsOverAnEarlierOneForTheSameKey() {
+		Map<String, String> original = attrs("MIDlet-Name", "Game", "K", "1");
+		InstallEdits first = InstallEdits.diff(original, attrs("MIDlet-Name", "A", "K", "1"));
+		Map<String, String> shown = new HashMap<>(original);
+		first.applyTo(shown);
+		InstallEdits second = InstallEdits.diff(shown, attrs("MIDlet-Name", "B", "K", "1"));
+		assertEquals("B", first.then(second).get("MIDlet-Name", "Game"));
+	}
+
+	@Test
+	public void aKeyRemovedEarlierCanBeAddedBackAndAKeyAddedEarlierCanBeRemoved() {
+		Map<String, String> original = attrs("MIDlet-Name", "Game", "Gone", "1");
+		InstallEdits removeIt = InstallEdits.diff(original, attrs("MIDlet-Name", "Game"));
+		Map<String, String> shown = new HashMap<>(original);
+		removeIt.applyTo(shown);
+		InstallEdits addBack = InstallEdits.diff(shown, attrs("MIDlet-Name", "Game", "Gone", "2"));
+		assertEquals("2", removeIt.then(addBack).get("Gone", "1"));
+
+		InstallEdits add = InstallEdits.diff(original, attrs("MIDlet-Name", "Game", "Gone", "1", "New", "n"));
+		shown = new HashMap<>(original);
+		add.applyTo(shown);
+		InstallEdits remove = InstallEdits.diff(shown, attrs("MIDlet-Name", "Game", "Gone", "1"));
+		Map<String, String> real = new HashMap<>(original);
+		add.then(remove).applyTo(real);
+		assertFalse(real.containsKey("New"));
+	}
+
+	@Test
+	public void combiningWithNoEditsChangesNothing() {
+		InstallEdits e = InstallEdits.diff(attrs("A", "1"), attrs("A", "2"));
+		assertEquals("2", InstallEdits.none().then(e).get("A", "1"));
+		assertEquals("2", e.then(InstallEdits.none()).get("A", "1"));
+		assertTrue(InstallEdits.none().then(InstallEdits.none()).isEmpty());
+	}
+
+	@Test
 	public void descriptorCopyIsIndependentAndEditsApplyToIt() throws IOException {
 		Descriptor d = new Descriptor("MIDlet-Name: Game\nMIDlet-Vendor: Acme\nMIDlet-Version: 1.0\n", false);
 		Descriptor copy = d.copy();

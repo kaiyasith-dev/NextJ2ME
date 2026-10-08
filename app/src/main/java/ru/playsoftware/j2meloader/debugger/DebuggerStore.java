@@ -99,10 +99,10 @@ public final class DebuggerStore {
 		@SerializedName("bigEndian") boolean bigEndian = true;
 		@SerializedName("alignment") int alignment;
 		@SerializedName("encoding") String encoding;
-		@SerializedName("pauseDuringScan") boolean pauseDuringScan = true;
 		@SerializedName("group") boolean group;
 		@SerializedName("groupWindow") int groupWindow = ScanParams.DEFAULT_GROUP_WINDOW;
 		@SerializedName("groupOrdered") boolean groupOrdered;
+		@SerializedName("fuzzy") boolean fuzzy;
 		@SerializedName("freezePeriodMs") int freezePeriodMs = 100;
 	}
 
@@ -170,11 +170,11 @@ public final class DebuggerStore {
 		p.bigEndian = s.bigEndian;
 		p.alignment = Math.max(0, s.alignment);
 		p.encoding = enumOf(StringEncoding.class, s.encoding, p.encoding);
-		p.pauseDuringScan = s.pauseDuringScan;
 		p.group = s.group;
 		p.groupWindow = s.groupWindow < 1 ? ScanParams.DEFAULT_GROUP_WINDOW
 				: Math.min(s.groupWindow, ScanParams.MAX_GROUP_WINDOW);
 		p.groupOrdered = s.groupOrdered;
+		p.fuzzy = s.fuzzy;
 		out.freezePeriodMs = s.freezePeriodMs <= 0 ? 100 : s.freezePeriodMs;
 	}
 
@@ -239,10 +239,10 @@ public final class DebuggerStore {
 		s.bigEndian = p.bigEndian;
 		s.alignment = p.alignment;
 		s.encoding = p.encoding.name();
-		s.pauseDuringScan = p.pauseDuringScan;
 		s.group = p.group;
 		s.groupWindow = p.groupWindow;
 		s.groupOrdered = p.groupOrdered;
+		s.fuzzy = p.fuzzy;
 		s.freezePeriodMs = settings.freezePeriodMs;
 		dto.settings = s;
 		writeTargets(watches, dto.watches);

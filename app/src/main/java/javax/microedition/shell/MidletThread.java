@@ -121,7 +121,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	static void destroyApp() {
-		// opens the pause gate so the game can run its own shutdown code
+		// lets the memory debugger flush its data and let go of the game
 		debugDestroyed();
 		Thread.setDefaultUncaughtExceptionHandler(uncaughtExceptionHandler);
 		new Thread(() -> {

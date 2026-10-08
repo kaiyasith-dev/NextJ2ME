@@ -123,7 +123,6 @@ public class PersistenceTest extends DebuggerTestBase {
 		p.bigEndian = false;
 		p.alignment = 2;
 		p.encoding = StringEncoding.UTF16BE;
-		p.pauseDuringScan = false;
 		dbg.runNewScan(p, null, CancelToken.NEVER);
 		dbg.setFreezePeriodMs(250);
 		assertTrue(dbg.saveNow());
@@ -136,7 +135,6 @@ public class PersistenceTest extends DebuggerTestBase {
 		assertFalse(q.bigEndian);
 		assertEquals(2, q.alignment);
 		assertEquals(StringEncoding.UTF16BE, q.encoding);
-		assertFalse(q.pauseDuringScan);
 		assertEquals(250, again.freezePeriodMs());
 	}
 

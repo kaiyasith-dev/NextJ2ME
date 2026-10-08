@@ -64,6 +64,26 @@ final class InstallEdits {
 		return e;
 	}
 
+	/**
+	 * The edits that result from applying these ones first and {@code later} on top of them. Used
+	 * when the user goes back to the details and changes more: {@code later} was made against the
+	 * already edited values, so the earlier edits must be kept.
+	 */
+	InstallEdits then(InstallEdits later) {
+		InstallEdits r = new InstallEdits();
+		r.set.putAll(set);
+		r.removed.addAll(removed);
+		for (String key : later.removed) {
+			r.set.remove(key);
+			r.removed.add(key);
+		}
+		for (Map.Entry<String, String> e : later.set.entrySet()) {
+			r.removed.remove(e.getKey());
+			r.set.put(e.getKey(), e.getValue());
+		}
+		return r;
+	}
+
 	boolean isEmpty() {
 		return set.isEmpty() && removed.isEmpty();
 	}

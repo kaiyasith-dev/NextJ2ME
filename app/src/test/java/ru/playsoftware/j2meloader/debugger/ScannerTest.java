@@ -394,18 +394,4 @@ public class ScannerTest extends DebuggerTestBase {
 		assertEquals(0, dbg.results(s, n, 10).size());
 	}
 
-	@Test
-	public void pausesTheGameDuringScansWhenAsked() {
-		ScanParams p = params(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.UNKNOWN, "");
-		p.pauseDuringScan = true;
-		sawPaused = false;
-		dbg.runNewScan(p, null, CancelToken.NEVER);
-		assertTrue("the gate was closed while the scan read the game", sawPaused);
-		assertTrue("the gate is released again after the scan", !PauseGate.isPaused());
-
-		p.pauseDuringScan = false;
-		sawPaused = false;
-		dbg.runNewScan(p, null, CancelToken.NEVER);
-		assertTrue("not paused when the user opted out", !sawPaused);
-	}
 }

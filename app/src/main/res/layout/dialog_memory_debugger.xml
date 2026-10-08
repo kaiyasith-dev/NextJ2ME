@@ -194,13 +194,31 @@
                     android:maxLines="1"
                     android:textColor="?attr/textColorPrimary" />
 
-                <CheckBox
-                    android:id="@+id/check_group"
+                <!-- Group scan and Big endian share one line -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/memdbg_group"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="13sp" />
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
+
+                    <CheckBox
+                        android:id="@+id/check_group"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/memdbg_group"
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="13sp" />
+
+                    <CheckBox
+                        android:id="@+id/check_big_endian"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/memdbg_big_endian"
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/group_options"
@@ -307,22 +325,6 @@
                     android:textColor="?attr/textColorSecondary"
                     android:textSize="12sp"
                     android:textStyle="bold" />
-
-                <CheckBox
-                    android:id="@+id/check_big_endian"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/memdbg_big_endian"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="13sp" />
-
-                <CheckBox
-                    android:id="@+id/check_pause_scan"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/memdbg_pause_scan"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="13sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"

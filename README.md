@@ -19,6 +19,7 @@ Turn it on in **Settings → Developer / Debugging** (off by default). Then open
 - **Scan sources:** Raw memory (a virtual big-endian address space built from the game's primitive arrays), Java objects, Primitive arrays and Static fields.
 - **Value types:** int8, uint8, int16, uint16, int32, uint32, int64, uint64, float, double, boolean, string and raw bytes.
 - **Scan modes:** exact value, unknown initial value, changed / unchanged, increased / decreased (optionally by an amount), equal / not equal to, and **group scan** (find several values that sit together, such as a score next to lives).
+- **Any integer size (fuzzy scan):** search a whole number without knowing whether the game stores it as 8, 16, 32 or 64 bits. One pass finds it at every size it fits and lists every address together with its size; the next scans filter all sizes together until only the right one is left.
 - **Scan history:** go back to the results of any earlier scan step.
 - **Memory view:** List and Hex views, change the data type on the fly, and jump to an address from a scan result or a watch.
 - **Edit and freeze:** write a new value, or keep a value fixed while the game runs.

@@ -102,6 +102,8 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	private static final ScanScope[] SCOPES = ScanScope.values();
 	private static final ValueType[] TYPES = ValueType.values();
+	/** Extra entry at the end of the scan type list: search a whole number at every integer size. */
+	private static final int FUZZY_TYPE_POS = TYPES.length;
 	private static final ScanMode[] MODES = ScanMode.values();
 	private static final StringEncoding[] ENCODINGS = StringEncoding.values();
 	private static final int[] ALIGNMENTS = {0, 1, 2, 4, 8};
@@ -555,7 +557,15 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		for (ValueType t : TYPES) {
 			types.add(t.label());
 		}
-		bind(b.spinType, types, p.type.ordinal(), pos -> updateValueField());
+		types.add(getString(R.string.memdbg_fuzzy)); // "Any integer size"
+		bind(b.spinType, types, p.fuzzy ? FUZZY_TYPE_POS : p.type.ordinal(), pos -> {
+			if (pos == FUZZY_TYPE_POS) {
+				// an any-size scan is always an exact-value scan, and not a group one
+				b.spinMode.setSelection(ScanMode.EXACT.ordinal());
+				b.checkGroup.setChecked(false);
+			}
+			updateValueField();
+		});
 		List<String> modes = new ArrayList<>();
 		for (ScanMode m : MODES) {
 			modes.add(m.label());
@@ -578,15 +588,17 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 		bind(b.spinEncoding, encs, p.encoding.ordinal(), null);
 		b.checkBigEndian.setChecked(p.bigEndian);
-		b.checkPauseScan.setChecked(p.pauseDuringScan);
 		b.editValue.setText(p.value);
-		b.checkGroup.setChecked(p.group);
+		b.checkGroup.setChecked(p.group && !p.fuzzy);
 		b.editGroupWindow.setText(String.valueOf(p.groupWindow));
 		b.checkGroupOrdered.setChecked(p.groupOrdered);
 		b.checkGroup.setOnCheckedChangeListener((button, checked) -> {
 			if (checked) {
-				// a group scan is always an exact-value scan
+				// a group scan is always an exact-value scan, and needs one integer size
 				b.spinMode.setSelection(ScanMode.EXACT.ordinal());
+				if (b.spinType.getSelectedItemPosition() == FUZZY_TYPE_POS) {
+					b.spinType.setSelection(ValueType.INT32.ordinal());
+				}
 			}
 			updateValueField();
 		});
@@ -613,10 +625,14 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			return;
 		}
 		ScanMode mode = MODES[b.spinMode.getSelectedItemPosition()];
-		ValueType type = TYPES[b.spinType.getSelectedItemPosition()];
-		boolean group = b.checkGroup.isChecked() && type.isNumeric();
-		b.editValue.setVisibility(mode.needsValue() || group ? View.VISIBLE : View.GONE);
-		b.editValue.setHint(group ? R.string.memdbg_group_hint
+		int typePos = b.spinType.getSelectedItemPosition();
+		boolean fuzzy = typePos == FUZZY_TYPE_POS;
+		ValueType type = fuzzy ? ValueType.INT32 : TYPES[typePos];
+		boolean group = b.checkGroup.isChecked() && type.isNumeric() && !fuzzy;
+		b.checkGroup.setEnabled(!fuzzy); // an any-size scan is not a group scan
+		b.editValue.setVisibility(mode.needsValue() || group || fuzzy ? View.VISIBLE : View.GONE);
+		b.editValue.setHint(fuzzy ? R.string.memdbg_fuzzy_hint
+				: group ? R.string.memdbg_group_hint
 				: type == ValueType.BYTES ? R.string.memdbg_value_hint_bytes
 				: type == ValueType.STRING ? R.string.memdbg_value_hint_text : R.string.memdbg_value);
 		b.groupOptions.setVisibility(b.checkGroup.isChecked() ? View.VISIBLE : View.GONE);
@@ -625,14 +641,15 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 	private ScanParams readScanParams() {
 		ScanParams p = new ScanParams();
 		p.scope = SCOPES[b.spinScope.getSelectedItemPosition()];
-		p.type = TYPES[b.spinType.getSelectedItemPosition()];
+		int typePos = b.spinType.getSelectedItemPosition();
+		p.fuzzy = typePos == FUZZY_TYPE_POS;
+		p.type = p.fuzzy ? ValueType.INT32 : TYPES[typePos];
 		p.mode = MODES[b.spinMode.getSelectedItemPosition()];
 		p.value = b.editValue.getText().toString();
 		p.bigEndian = b.checkBigEndian.isChecked();
 		p.alignment = ALIGNMENTS[b.spinAlignment.getSelectedItemPosition()];
 		p.encoding = ENCODINGS[b.spinEncoding.getSelectedItemPosition()];
-		p.pauseDuringScan = b.checkPauseScan.isChecked();
-		p.group = b.checkGroup.isChecked();
+		p.group = b.checkGroup.isChecked() && !p.fuzzy;
 		p.groupOrdered = b.checkGroupOrdered.isChecked();
 		try {
 			p.groupWindow = Integer.parseInt(b.editGroupWindow.getText().toString().trim());
@@ -660,6 +677,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 				return;
 			}
 			p.group = false; // groups only start a scan; the next scans filter its results
+			p.fuzzy = false; // so does any-size: the next scans filter every size of it
 		}
 		setScanning(true);
 		b.scanStatus.setText(getString(R.string.memdbg_scanning, 0L, 0L));
@@ -729,7 +747,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 		updatingUi = true;
 		b.spinScope.setSelection(s.scope.ordinal(), false);
-		b.spinType.setSelection(s.type.ordinal(), false);
+		b.spinType.setSelection(s.fuzzyGroup() != 0 ? FUZZY_TYPE_POS : s.type.ordinal(), false);
 		b.spinEncoding.setSelection(s.encoding.ordinal(), false);
 		b.checkBigEndian.setChecked(s.bigEndian);
 		updatingUi = false;
@@ -742,28 +760,48 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		}
 		List<ScanSession> sessions = dbg.sessions();
 		ScanSession active = dbg.activeSession();
+		// one entry per scan: the sizes of an any-size scan are listed together
+		final List<ScanSession> entries = new ArrayList<>();
 		List<String> labels = new ArrayList<>();
+		java.util.Set<Integer> listedGroups = new java.util.HashSet<>();
 		int sel = 0;
-		for (int i = 0; i < sessions.size(); i++) {
-			ScanSession s = sessions.get(i);
-			labels.add(getString(R.string.memdbg_session_label, s.id, s.type.label(), s.resultCount()));
-			if (s == active) {
-				sel = i;
+		for (ScanSession s : sessions) {
+			if (s.fuzzyGroup() != 0 && !listedGroups.add(s.fuzzyGroup())) {
+				continue; // another size of a scan that is already listed
+			}
+			boolean isActive = active != null && sameScan(s, active);
+			if (isActive) {
+				sel = entries.size();
+			}
+			entries.add(isActive ? active : s);
+			if (s.fuzzyGroup() != 0) {
+				labels.add(getString(R.string.memdbg_session_label_any, dbg.scanGroup(s).get(0).id,
+						(int) dbg.totalResults(s), dbg.sizeSummary(s)));
+			} else {
+				labels.add(getString(R.string.memdbg_session_label, s.id, s.type.label(), s.resultCount()));
 			}
 		}
 		b.sessionRow.setVisibility(sessions.isEmpty() ? View.GONE : View.VISIBLE);
 		if (sessions.isEmpty()) {
 			return;
 		}
-		final List<ScanSession> snapshot = sessions;
 		bind(b.spinSession, labels, sel, pos -> {
-			if (pos >= 0 && pos < snapshot.size() && snapshot.get(pos) != dbg.activeSession()) {
-				dbg.setActiveSession(snapshot.get(pos));
-				resultLimit = RESULT_PAGE;
-				syncControlsToSession(snapshot.get(pos));
-				syncResultsWithSession();
+			if (pos >= 0 && pos < entries.size()) {
+				ScanSession chosen = entries.get(pos);
+				ScanSession now = dbg.activeSession();
+				if (now == null || !sameScan(chosen, now)) {
+					dbg.setActiveSession(chosen);
+					resultLimit = RESULT_PAGE;
+					syncControlsToSession(chosen);
+					syncResultsWithSession();
+				}
 			}
 		});
+	}
+
+	/** Whether two scans are the same one: equal, or sizes of one any-size scan. */
+	private static boolean sameScan(ScanSession a, ScanSession b) {
+		return a == b || (a.fuzzyGroup() != 0 && a.fuzzyGroup() == b.fuzzyGroup());
 	}
 
 	/** Resetting throws away the results and the history, so it needs a confirmation. */
@@ -772,7 +810,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			b.scanStatus.setText(R.string.memdbg_no_scan);
 			return;
 		}
-		int count = dbg.sessions().size();
+		int count = dbg.scanCount();
 		String message = getString(R.string.memdbg_reset_confirm_message);
 		if (count > 1) {
 			message += "\n\n" + getString(R.string.memdbg_reset_hint, count);
@@ -791,7 +829,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 
 	/** Holding Reset clears every scan at once, after a confirmation. */
 	private void confirmResetAll() {
-		final int count = dbg.sessions().size();
+		final int count = dbg.scanCount();
 		if (count == 0) {
 			b.scanStatus.setText(R.string.memdbg_no_scan);
 			return;
@@ -825,7 +863,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			ScanSession.Step step = steps.get(i);
 			String mark = i == items.length - 1 ? "  \u2190 " + getString(R.string.memdbg_history_now)
 					: step.isRestorable() ? "" : "  (" + getString(R.string.memdbg_history_not_kept) + ")";
-			items[i] = (i + 1) + ". " + step + mark;
+			items[i] = (i + 1) + ". " + step.describe(dbg.stepResults(s, i)) + mark;
 		}
 		new AlertDialog.Builder(requireContext())
 				.setTitle(R.string.memdbg_history_title)
@@ -848,7 +886,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		shownSession = null;
 		syncResultsWithSession();
 		refreshSessions();
-		toast(getString(R.string.memdbg_history_restored, index + 1, (int) s.resultCount()));
+		toast(getString(R.string.memdbg_history_restored, index + 1, (int) dbg.totalResults(s)));
 	}
 
 	// ------------------------------------------------------------------ results
@@ -874,7 +912,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			return;
 		}
 		ScanSession s = dbg.activeSession();
-		long count = s == null ? -1 : s.resultCount();
+		long count = s == null ? -1 : dbg.totalResults(s);
 		if (s != shownSession || count != shownCount) {
 			renderResults();
 		}
@@ -885,18 +923,23 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 		resultRows.clear();
 		ScanSession s = dbg.activeSession();
 		shownSession = s;
-		shownCount = s == null ? -1 : s.resultCount();
+		long total = s == null ? -1 : dbg.totalResults(s);
+		shownCount = total;
 		if (s == null) {
 			b.scanStatus.setText(R.string.memdbg_no_scan);
 			b.btnMoreResults.setVisibility(View.GONE);
 			return;
 		}
-		String status = getString(s.isTruncated() ? R.string.memdbg_scan_truncated : R.string.memdbg_scan_done,
-				(int) s.resultCount());
+		String status = getString(dbg.isTruncated(s) ? R.string.memdbg_scan_truncated : R.string.memdbg_scan_done,
+				(int) total);
+		String sizes = dbg.sizeSummary(s);
+		if (sizes != null) {
+			status += "\n" + sizes; // how many results each integer size has
+		}
 		String warning = s.warning();
 		b.scanStatus.setText(warning == null ? status : status + "\n" + warning);
 		LayoutInflater inflater = LayoutInflater.from(requireContext());
-		for (MemoryDebugger.ScanResult r : dbg.results(s, 0, resultLimit)) {
+		for (MemoryDebugger.ScanResult r : dbg.combinedResults(s, 0, resultLimit)) {
 			View row = inflater.inflate(R.layout.list_row_debug, b.resultsContainer, false);
 			TextView title = row.findViewById(R.id.row_title);
 			TextView subtitle = row.findViewById(R.id.row_subtitle);
@@ -908,7 +951,7 @@ public class MemoryDebuggerDialog extends DialogFragment implements MemoryDebugg
 			b.resultsContainer.addView(row);
 			resultRows.add(new ResultRow(loc, r.previous, row, value));
 		}
-		b.btnMoreResults.setVisibility(s.resultCount() > resultLimit ? View.VISIBLE : View.GONE);
+		b.btnMoreResults.setVisibility(total > resultLimit ? View.VISIBLE : View.GONE);
 		refreshResultValues();
 		highlightSelection();
 	}

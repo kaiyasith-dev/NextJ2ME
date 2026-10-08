@@ -54,8 +54,18 @@ public final class ScanSession {
 
 		@Override
 		public String toString() {
+			return describe(results);
+		}
+
+		/** Like {@link #toString()}, with another result count (the total of an any-size scan). */
+		public String describe(long resultCount) {
 			String v = mode.needsValue() ? " " + value : "";
-			return mode.label() + v + " → " + results + (truncated ? "+" : "") + " (" + millis + " ms)";
+			return mode.label() + v + " → " + resultCount + (truncated ? "+" : "") + " (" + millis + " ms)";
+		}
+
+		/** How many results this step had. */
+		public long results() {
+			return results;
 		}
 	}
 
@@ -79,6 +89,11 @@ public final class ScanSession {
 	private volatile String warning;
 	/** Steps whose results were dropped since the last {@link #takeDroppedSteps()}. */
 	private int droppedSteps;
+	/**
+	 * Non-zero for the scans that came from one "any integer size" scan: they share this id and
+	 * every further scan filters all of them together.
+	 */
+	private volatile int fuzzyGroup;
 
 	ScanSession(int id, int generation, ScanParams p) {
 		this.id = id;
@@ -88,6 +103,22 @@ public final class ScanSession {
 		this.bigEndian = p.bigEndian;
 		this.alignment = p.alignment;
 		this.encoding = p.encoding;
+	}
+
+	void setFuzzyGroup(int group) {
+		this.fuzzyGroup = group;
+	}
+
+	/** The id shared by the scans of one any-size scan, or 0 for an ordinary scan. */
+	public int fuzzyGroup() {
+		return fuzzyGroup;
+	}
+
+	/** Number of steps so far; the newest step has index {@code stepCount() - 1}. */
+	int stepCount() {
+		synchronized (history) {
+			return history.size();
+		}
 	}
 
 	public MemorySnapshot snapshot() {
@@ -218,7 +249,7 @@ public final class ScanSession {
 	}
 
 	public String title() {
-		return "#" + id + " " + type.label() + " · " + scope.label() + " · " + resultCount()
+		return "#" + id + " " + type.label() + (fuzzyGroup != 0 ? " (any size)" : "") + " · " + scope.label() + " · " + resultCount()
 				+ (truncated ? "+" : "") + " results";
 	}
 }

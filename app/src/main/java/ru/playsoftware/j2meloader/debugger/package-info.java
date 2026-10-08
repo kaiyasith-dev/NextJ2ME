@@ -42,7 +42,6 @@
  *     VmInspector       reflection walk of the object graph, path finding, reference resolution
  *       MemoryRegion    FieldRegion / ArrayRegion: typed or byte addressable view, weakly referenced
  *   FreezeEngine        single low-rate timer thread, alive only while something is enforced
- *   PauseGate           cooperative pause: game threads park at render / event checkpoints
  *   DebuggerStore       per-game JSON (watches, freezes, settings) - never scan results
  * </pre>
  * The core has no Android dependency; {@code ui.EmulatorBridge} is the only class that knows the
@@ -57,8 +56,8 @@
  *
  * <h2>Cost when unused</h2>
  * The master switch decides at game start whether a {@code MemoryDebugger} exists at all. When it
- * does not, the emulator hooks are a null check (class loading, lifecycle) or one volatile read
- * ({@code PauseGate.checkpoint}). Regions are weak views, and ids or addresses are assigned only to
- * regions that yield a candidate or are looked at.
+ * does not, the emulator hooks are a null check (class loading, lifecycle). The game is never
+ * paused: scans read it while it runs. Regions are weak views, and ids or addresses are assigned
+ * only to regions that yield a candidate or are looked at.
  */
 package ru.playsoftware.j2meloader.debugger;

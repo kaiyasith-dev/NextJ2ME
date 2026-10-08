@@ -113,7 +113,8 @@ public class AppInstaller {
 	 * @return the same kind of status as loading the descriptor (new app, or an existing one)
 	 */
 	int applyEdits(InstallEdits edits) {
-		this.edits = edits;
+		// the new edits were made against the already edited values: keep the earlier ones too
+		this.edits = this.edits.then(edits);
 		Descriptor d = getEffectiveDescriptor();
 		return checkIdentity(d.getName(), d.getVendor(), d.getVersion());
 	}

@@ -290,7 +290,6 @@ public final class MemoryDebugger {
 		destroyed = true;
 		state = MidletState.DESTROYED;
 		scanCancel.cancel();
-		PauseGate.releaseAll();
 		freezeEngine.shutdown();
 		saveNow();
 		synchronized (sessions) {
@@ -315,7 +314,6 @@ public final class MemoryDebugger {
 		registry.clear();
 		space.clear();
 		inspector.clear();
-		PauseGate.releaseAll();
 		for (MemoryWatch w : watches) {
 			w.setStatus(MemoryTarget.Status.PENDING);
 		}
@@ -339,7 +337,6 @@ public final class MemoryDebugger {
 			ioExecutor.shutdown(); // let a queued save finish
 			ioExecutor = null;
 		}
-		SafeCalls.shutdown();
 	}
 
 	private void checkAlive() {
@@ -381,18 +378,6 @@ public final class MemoryDebugger {
 		scanExecutor().execute(r);
 	}
 
-	// ================================================================== freeze barrier
-
-	/**
-	 * Once the pause gate is closed no new freeze tick starts; this waits for one that began just
-	 * before, so nothing is written after the game was paused for a scan.
-	 */
-	void awaitFreezeTick() {
-		synchronized (enforceLock) {
-			// intentionally empty: acquiring the lock is the barrier
-		}
-	}
-
 	// ================================================================== scanning
 
 	public boolean isScanning() {
@@ -428,11 +413,136 @@ public final class MemoryDebugger {
 	public void resetScan() {
 		synchronized (sessions) {
 			if (activeSession != null) {
-				sessions.remove(activeSession);
+				removeScan(activeSession);
 			}
 			activeSession = sessions.isEmpty() ? null : sessions.get(sessions.size() - 1);
 		}
 		fire();
+	}
+
+	// ------------------------------------------------------------------ any size scans as one
+
+	/** Removes a scan; for an any-size scan that is all of its sizes. Caller holds the sessions lock. */
+	private void removeScan(ScanSession s) {
+		int group = s.fuzzyGroup();
+		if (group == 0) {
+			sessions.remove(s);
+			return;
+		}
+		for (ScanSession x : new ArrayList<>(sessions)) {
+			if (x.fuzzyGroup() == group) {
+				sessions.remove(x);
+			}
+		}
+	}
+
+	/** The scans that belong together with {@code s}: its sizes for an any-size scan, else just {@code s}. */
+	public List<ScanSession> scanGroup(ScanSession s) {
+		List<ScanSession> out = new ArrayList<>();
+		if (s.fuzzyGroup() == 0) {
+			out.add(s);
+			return out;
+		}
+		synchronized (sessions) {
+			for (ScanSession x : sessions) {
+				if (x.fuzzyGroup() == s.fuzzyGroup()) {
+					out.add(x);
+				}
+			}
+		}
+		if (out.isEmpty()) {
+			out.add(s);
+		}
+		return out;
+	}
+
+	/** How many scans there are; the sizes of an any-size scan count as one. */
+	public int scanCount() {
+		synchronized (sessions) {
+			return countScans();
+		}
+	}
+
+	private int countScans() {
+		java.util.Set<Integer> groups = new java.util.HashSet<>();
+		int n = 0;
+		for (ScanSession s : sessions) {
+			if (s.fuzzyGroup() == 0) {
+				n++;
+			} else if (groups.add(s.fuzzyGroup())) {
+				n++;
+			}
+		}
+		return n;
+	}
+
+	/** Results of the scan, all sizes together for an any-size scan. */
+	public long totalResults(ScanSession s) {
+		long total = 0;
+		for (ScanSession m : scanGroup(s)) {
+			total += m.resultCount();
+		}
+		return total;
+	}
+
+	/** Whether the scan (any of its sizes) stopped at the candidate limit. */
+	public boolean isTruncated(ScanSession s) {
+		for (ScanSession m : scanGroup(s)) {
+			if (m.isTruncated()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** For an any-size scan how many results each size has, like "int16 3 · int32 12"; else null. */
+	public String sizeSummary(ScanSession s) {
+		if (s.fuzzyGroup() == 0) {
+			return null;
+		}
+		StringBuilder sb = new StringBuilder();
+		for (ScanSession m : scanGroup(s)) {
+			if (sb.length() > 0) {
+				sb.append(" \u00b7 ");
+			}
+			sb.append(m.type.label()).append(' ').append(m.resultCount());
+		}
+		return sb.toString();
+	}
+
+	/** Results of the scan; for an any-size scan the results of all sizes one after the other. */
+	public List<ScanResult> combinedResults(ScanSession s, long offset, int limit) {
+		List<ScanSession> group = scanGroup(s);
+		if (group.size() == 1) {
+			return results(group.get(0), offset, limit);
+		}
+		List<ScanResult> out = new ArrayList<>();
+		long skip = offset;
+		for (ScanSession m : group) {
+			long count = m.resultCount();
+			if (skip >= count) {
+				skip -= count;
+				continue;
+			}
+			out.addAll(results(m, skip, limit - out.size()));
+			skip = 0;
+			if (out.size() >= limit) {
+				break;
+			}
+		}
+		return out;
+	}
+
+	/** Results at step {@code index} summed over the sizes of an any-size scan. */
+	public long stepResults(ScanSession s, int index) {
+		long total = 0;
+		for (ScanSession m : scanGroup(s)) {
+			List<ScanSession.Step> steps = m.history();
+			if (index >= 0 && index < steps.size()) {
+				total += steps.get(index).results();
+			}
+		}
+		return total;
 	}
 
 	/** Discards every scan and its history (long press on "Reset"). */
@@ -455,7 +565,9 @@ public final class MemoryDebugger {
 	/** The oldest scan that is not the active one, or null if there is none. */
 	private ScanSession oldestInactive() {
 		for (ScanSession x : sessions) {
-			if (x != activeSession) {
+			boolean sameScan = x == activeSession
+					|| (x.fuzzyGroup() != 0 && activeSession != null && x.fuzzyGroup() == activeSession.fuzzyGroup());
+			if (!sameScan) {
 				return x;
 			}
 		}
@@ -468,12 +580,12 @@ public final class MemoryDebugger {
 	 */
 	private void enforceSessionLimits() {
 		synchronized (sessions) {
-			while (sessions.size() > MAX_SESSIONS) {
+			while (countScans() > MAX_SESSIONS) {
 				ScanSession old = oldestInactive();
 				if (old == null) {
 					break;
 				}
-				sessions.remove(old);
+				removeScan(old);
 				notices.add("Scan #" + old.id + " was removed: at most " + MAX_SESSIONS + " scans are kept.");
 			}
 			long total = 0;
@@ -481,13 +593,15 @@ public final class MemoryDebugger {
 				total += x.retainedCount();
 			}
 			// keep the game's heap safe: forget the oldest scans first, never the active one
-			while (total > MAX_TOTAL_CANDIDATES && sessions.size() > 1) {
+			while (total > MAX_TOTAL_CANDIDATES && countScans() > 1) {
 				ScanSession old = oldestInactive();
 				if (old == null) {
 					break;
 				}
-				sessions.remove(old);
-				total -= old.retainedCount();
+				for (ScanSession m : scanGroup(old)) {
+					total -= m.retainedCount();
+				}
+				removeScan(old);
 				notices.add("Scan #" + old.id + " was removed to save memory.");
 			}
 		}
@@ -517,14 +631,18 @@ public final class MemoryDebugger {
 	void releaseMemory() {
 		synchronized (sessions) {
 			ScanSession keep = activeSession;
+			List<ScanSession> keepAll = keep == null ? new ArrayList<ScanSession>() : scanGroup(keep);
 			for (ScanSession x : new ArrayList<>(sessions)) {
-				if (x != keep) {
+				if (!keepAll.contains(x)) {
 					sessions.remove(x);
 					notices.add("Scan #" + x.id + " was removed to free memory.");
 				}
 			}
 			if (keep != null) {
-				int dropped = keep.dropAllButNewestSnapshot();
+				int dropped = 0;
+				for (ScanSession m : keepAll) {
+					dropped += m.dropAllButNewestSnapshot();
+				}
 				if (dropped > 0) {
 					notices.add("Scan #" + keep.id + ": " + dropped + " older step"
 							+ (dropped == 1 ? "" : "s") + " dropped to free memory.");
@@ -548,7 +666,21 @@ public final class MemoryDebugger {
 		if (s.generation != generation) {
 			throw new IllegalStateException("These results belong to a previous run of the game");
 		}
-		s.restoreTo(index);
+		List<ScanSession> group = scanGroup(s);
+		// check first, so that either every size goes back or none does
+		for (ScanSession m : group) {
+			List<ScanSession.Step> steps = m.history();
+			if (index < 0 || index >= steps.size()) {
+				throw new IllegalArgumentException("There is no step " + (index + 1));
+			}
+			if (!steps.get(index).isRestorable()) {
+				throw new IllegalStateException("The results of step " + (index + 1)
+						+ " were not kept to save memory");
+			}
+		}
+		for (ScanSession m : group) {
+			m.restoreTo(index);
+		}
 		fire();
 	}
 
@@ -557,6 +689,9 @@ public final class MemoryDebugger {
 		checkAlive();
 		ScanParams params = p.copy();
 		params.validate(true);
+		if (params.fuzzy) {
+			return runNewFuzzyScan(params, progress, cancel);
+		}
 		ScanSession session;
 		synchronized (sessions) {
 			session = new ScanSession(++sessionSeq, generation, params);
@@ -578,6 +713,9 @@ public final class MemoryDebugger {
 		if (session.generation != generation) {
 			throw new IllegalStateException("These results belong to a previous run of the game");
 		}
+		if (session.fuzzyGroup() != 0) {
+			return runNextFuzzyScan(session, p.copy(), progress, cancel);
+		}
 		runScan(session, p.copy(), false, progress, cancel);
 		rememberScanSettings(p);
 		reportDroppedSteps(session);
@@ -585,23 +723,177 @@ public final class MemoryDebugger {
 		return session;
 	}
 
+	// ------------------------------------------------------------------ any integer size
+
+	/** The scan to show first: the 32-bit one if it has a place in the list, as ints are the most common. */
+	private static ScanSession preferredOf(List<ScanSession> list) {
+		for (ScanSession s : list) {
+			if (s.type == ValueType.INT32 || s.type == ValueType.UINT32) {
+				return s;
+			}
+		}
+		return list.get(0);
+	}
+
+	/**
+	 * Searches the value as every integer size it fits, in one pass. Each size that has results
+	 * becomes a scan of its own; the following scans filter all of them together.
+	 */
+	private ScanSession runNewFuzzyScan(ScanParams params, MemoryScanner.Progress progress, CancelToken cancel) {
+		ValueType[] types = params.fuzzyTypes();
+		List<ScanSession> all = new ArrayList<>();
+		synchronized (sessions) {
+			for (ValueType t : types) {
+				ScanParams pt = params.copy();
+				pt.type = t;
+				pt.fuzzy = false;
+				all.add(new ScanSession(++sessionSeq, generation, pt));
+			}
+		}
+		int group = all.get(0).id;
+		for (ScanSession s : all) {
+			s.setFuzzyGroup(group);
+		}
+		scanner.firstScanFuzzy(all, params, progress, cancel);
+		if (all.get(0).generation != generation) {
+			throw new IllegalStateException("The game restarted during the scan");
+		}
+		List<ScanSession> keep = new ArrayList<>();
+		for (ScanSession s : all) {
+			if (s.resultCount() > 0) {
+				keep.add(s);
+			}
+		}
+		if (keep.isEmpty()) {
+			keep.add(preferredOf(all)); // show "0 results" for the most common size
+		}
+		ScanSession active = preferredOf(keep);
+		synchronized (sessions) {
+			sessions.addAll(keep);
+			activeSession = active;
+			enforceSessionLimits();
+		}
+		for (ScanSession s : keep) {
+			reportDroppedSteps(s);
+		}
+		rememberScanSettings(params);
+		return active;
+	}
+
+	/**
+	 * Filters every scan of the active scan's any-size group with the same comparison. Sizes that
+	 * end up with no results (or that can not hold the new value) are removed, so the right size
+	 * is what remains after a few steps. If the scan fails or is cancelled, no size is changed.
+	 */
+	private ScanSession runNextFuzzyScan(ScanSession active, ScanParams p,
+										 MemoryScanner.Progress progress, CancelToken cancel) {
+		List<ScanSession> members = new ArrayList<>();
+		synchronized (sessions) {
+			for (ScanSession s : sessions) {
+				if (s.fuzzyGroup() == active.fuzzyGroup()) {
+					members.add(s);
+				}
+			}
+		}
+		List<ScanSession> updated = new ArrayList<>();
+		List<Integer> before = new ArrayList<>();
+		java.util.Map<ScanSession, String> failed = new java.util.LinkedHashMap<>();
+		try {
+			for (ScanSession m : members) {
+				int index = m.stepCount() - 1;
+				try {
+					scanner.nextScan(m, p, progress, cancel);
+					updated.add(m);
+					before.add(index);
+				} catch (CancellationException e) {
+					throw e; // a cancelled scan is not a failure of one size
+				} catch (IllegalArgumentException | IllegalStateException e) {
+					failed.put(m, e.getMessage());
+				}
+			}
+		} catch (RuntimeException | Error e) {
+			rollBack(updated, before); // cancelled or failed half way: leave every size as it was
+			throw e;
+		}
+		if (active.generation != generation) {
+			throw new IllegalStateException("The game restarted during the scan");
+		}
+		if (updated.isEmpty()) {
+			// nothing could be filtered, e.g. a value that is not a number: report why
+			String why = failed.isEmpty() ? "There is nothing to filter. Start a new scan."
+					: failed.values().iterator().next();
+			throw new IllegalArgumentException(why);
+		}
+		boolean allEmpty = true;
+		for (ScanSession m : updated) {
+			if (m.resultCount() > 0) {
+				allEmpty = false;
+			}
+		}
+		ScanSession keepWhenEmpty = updated.contains(active) ? active : updated.get(0);
+		List<String> kept = new ArrayList<>();
+		List<String> removed = new ArrayList<>();
+		synchronized (sessions) {
+			for (ScanSession m : members) {
+				boolean drop = failed.containsKey(m)
+						|| (m.resultCount() == 0 && !(allEmpty && m == keepWhenEmpty));
+				if (drop) {
+					sessions.remove(m);
+					removed.add(m.type.label());
+				} else {
+					kept.add(m.type.label());
+				}
+			}
+			if (!sessions.contains(activeSession)) {
+				List<ScanSession> left = new ArrayList<>();
+				for (ScanSession m : members) {
+					if (sessions.contains(m)) {
+						left.add(m);
+					}
+				}
+				activeSession = left.isEmpty()
+						? (sessions.isEmpty() ? null : sessions.get(sessions.size() - 1)) : preferredOf(left);
+			}
+		}
+		if (!removed.isEmpty()) {
+			notices.add("Any integer size: kept " + join(kept) + "; removed " + join(removed)
+					+ " (no matching results).");
+		}
+		rememberScanSettings(p);
+		for (ScanSession m : members) {
+			reportDroppedSteps(m);
+		}
+		enforceSessionLimits();
+		return activeSession();
+	}
+
+	private static void rollBack(List<ScanSession> updated, List<Integer> before) {
+		for (int i = 0; i < updated.size(); i++) {
+			try {
+				updated.get(i).restoreTo(before.get(i));
+			} catch (RuntimeException ignored) {
+				// the earlier results were not kept to save memory: the scan keeps its new results
+			}
+		}
+	}
+
+	private static String join(List<String> names) {
+		StringBuilder sb = new StringBuilder();
+		for (String n : names) {
+			if (sb.length() > 0) {
+				sb.append(", ");
+			}
+			sb.append(n);
+		}
+		return sb.length() == 0 ? "none" : sb.toString();
+	}
+
 	private void runScan(ScanSession session, ScanParams p, boolean first,
 						 MemoryScanner.Progress progress, CancelToken cancel) {
-		boolean hold = p.pauseDuringScan;
-		if (hold) {
-			PauseGate.hold();
-			awaitFreezeTick();
-		}
-		try {
-			if (first) {
-				scanner.firstScan(session, p, progress, cancel);
-			} else {
-				scanner.nextScan(session, p, progress, cancel);
-			}
-		} finally {
-			if (hold) {
-				PauseGate.release();
-			}
+		if (first) {
+			scanner.firstScan(session, p, progress, cancel);
+		} else {
+			scanner.nextScan(session, p, progress, cancel);
 		}
 		if (session.generation != generation) {
 			throw new IllegalStateException("The game restarted during the scan");
@@ -617,10 +909,10 @@ public final class MemoryDebugger {
 		s.bigEndian = p.bigEndian;
 		s.alignment = p.alignment;
 		s.encoding = p.encoding;
-		s.pauseDuringScan = p.pauseDuringScan;
 		s.group = p.group;
 		s.groupWindow = p.groupWindow;
 		s.groupOrdered = p.groupOrdered;
+		s.fuzzy = p.fuzzy;
 		markDirty();
 	}
 
@@ -1116,10 +1408,10 @@ public final class MemoryDebugger {
 		return n;
 	}
 
-	/** One tick of the freeze timer. Skipped while the game is paused. */
+	/** One tick of the freeze timer. */
 	void enforceFrozen() {
 		synchronized (enforceLock) {
-			if (destroyed || PauseGate.isPaused()) {
+			if (destroyed) {
 				return;
 			}
 			enforceAll();

@@ -82,14 +82,6 @@ public class LifecycleTest extends DebuggerTestBase {
 	}
 
 	@Test
-	public void restartReleasesAHeldGameAndResetsSessionReferences() {
-		PauseGate.hold(); // e.g. a scan was holding the game when it restarted
-		assertTrue(PauseGate.isPaused());
-		dbg.onMidletLoading();
-		assertFalse("a restart never leaves the new game parked", PauseGate.isPaused());
-	}
-
-	@Test
 	public void sessionFromThePreviousRunCannotBeFiltered() {
 		ScanSession old = first(ScanScope.STATIC_FIELDS, ValueType.INT32, ScanMode.UNKNOWN, "");
 		dbg.onMidletLoading();
@@ -108,14 +100,12 @@ public class LifecycleTest extends DebuggerTestBase {
 		dbg.addFreeze("Money", MemoryReference.staticField(TestGame.class.getName(), "money"),
 				ValueType.INT32, true, StringEncoding.UTF8, 0, val("1"), true);
 		first(ScanScope.OBJECTS, ValueType.INT32, ScanMode.UNKNOWN, "");
-		PauseGate.hold();
 		assertTrue(dbg.isFreezeTimerRunning());
 
 		dbg.onMidletDestroyed();
 
 		assertTrue(dbg.isDestroyed());
 		assertEquals(MemoryDebugger.MidletState.DESTROYED, dbg.midletState());
-		assertFalse("the gate is open again", PauseGate.isPaused());
 		assertFalse(dbg.isFreezeTimerRunning());
 		assertEquals(0, dbg.sessions().size());
 		assertTrue(dbg.statsText(), dbg.statsText().contains("0 objects"));

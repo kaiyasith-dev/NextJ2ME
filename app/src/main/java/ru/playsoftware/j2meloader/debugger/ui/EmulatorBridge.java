@@ -16,7 +16,6 @@
 
 package ru.playsoftware.j2meloader.debugger.ui;
 
-import android.os.Looper;
 
 import java.io.File;
 import java.util.LinkedHashMap;
@@ -33,7 +32,6 @@ import ru.playsoftware.j2meloader.BuildConfig;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.debugger.DebuggerStore;
 import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
-import ru.playsoftware.j2meloader.debugger.PauseGate;
 import ru.playsoftware.j2meloader.debugger.RootSource;
 
 /**
@@ -63,8 +61,6 @@ public final class EmulatorBridge implements RootSource {
 				? new File(Config.getEmulatorDir(), "debugger")
 				: new File(activity.getFilesDir(), "debugger");
 		MemoryDebugger.install(new EmulatorBridge(), new DebuggerStore(new File(dir, appId + ".json"), appId));
-		// the UI thread must never be parked by the pause gate
-		PauseGate.setExemptThread(Looper.getMainLooper().getThread());
 	}
 
 	@Override

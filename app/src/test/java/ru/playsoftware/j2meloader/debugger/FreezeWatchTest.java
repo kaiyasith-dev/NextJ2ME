@@ -127,21 +127,6 @@ public class FreezeWatchTest extends DebuggerTestBase {
 	}
 
 	@Test
-	public void freezeDoesNotWriteWhileTheGateIsClosed() throws Exception {
-		dbg.setFreezePeriodMs(20);
-		dbg.addFreeze("HP", staticRef("health"), ValueType.INT32, true, StringEncoding.UTF8, 0,
-				val(ValueType.INT32, "500"), true);
-		assertTrue(waitFor(2000, health(500)));
-		PauseGate.hold();
-		dbg.awaitFreezeTick(); // a tick that was already running finishes first
-		TestGame.health = 12;
-		Thread.sleep(200);
-		assertEquals("no enforcement while the game is held", 12, TestGame.health);
-		PauseGate.release();
-		assertTrue("enforcement resumes when the game runs again", waitFor(2000, health(500)));
-	}
-
-	@Test
 	public void freezeOfAnUnavailableTargetIsReportedNotThrown() throws Exception {
 		dbg.setFreezePeriodMs(20);
 		MemoryFreeze f = dbg.addFreeze("Ghost", MemoryReference.staticField("no.such.Class", "x"),

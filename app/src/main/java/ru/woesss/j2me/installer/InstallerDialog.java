@@ -230,10 +230,16 @@ public class InstallerDialog extends DialogFragment {
 		btnClose.setVisibility(View.VISIBLE);
 	}
 
-	/** Lets the user change name, vendor, version... before a new game is installed. */
-	private void showDetails() {
+	/**
+	 * Lets the user change name, vendor, version... before a new game is installed.
+	 *
+	 * @param returnTo the status to show again if the user cancels the details, or null to
+	 *                 cancel the whole installation (the first time the details are shown)
+	 */
+	private void showDetails(@Nullable Integer returnTo) {
 		hideProgress();
 		hideButtons();
+		binding.installationChangeName.setVisibility(View.GONE);
 		detailsDialog = InstallDetailsDialog.show(requireActivity(), installer.getEffectiveDescriptor(),
 				installer.getJar() == null, new InstallDetailsDialog.Listener() {
 					@Override
@@ -259,6 +265,10 @@ public class InstallerDialog extends DialogFragment {
 					@Override
 					public void onCancelled() {
 						detailsDialog = null;
+						if (returnTo != null) {
+							onProgress(returnTo); // back to the "already installed" question
+							return;
+						}
 						installer.deleteTemp();
 						installer.clearCache();
 						dismiss();
@@ -322,9 +332,10 @@ public class InstallerDialog extends DialogFragment {
 				|| status == AppInstaller.STATUS_EQUAL || status == AppInstaller.STATUS_NEWEST;
 		if (installable && !detailsEdited && !reinstalling) {
 			// ask for the details first; "already installed" is decided from the name typed there
-			showDetails();
+			showDetails(null);
 			return;
 		}
+		binding.installationChangeName.setVisibility(View.GONE);
 		Descriptor nd = installer.getEffectiveDescriptor();
 		SpannableStringBuilder message;
 		switch (status) {
@@ -371,6 +382,11 @@ public class InstallerDialog extends DialogFragment {
 		}
 		if (installer.getJar() == null) {
 			message.append('\n').append(getString(R.string.warn_install_from_net));
+		}
+		if (installable && status != AppInstaller.STATUS_NEW && !reinstalling) {
+			// the name matches an installed game: allow going back to change it
+			binding.installationChangeName.setVisibility(View.VISIBLE);
+			binding.installationChangeName.setOnClickListener(v -> showDetails(status));
 		}
 		Drawable drawable = Drawable.createFromPath(installer.getIconPath());
 		if (drawable != null) mDialog.setIcon(drawable);
