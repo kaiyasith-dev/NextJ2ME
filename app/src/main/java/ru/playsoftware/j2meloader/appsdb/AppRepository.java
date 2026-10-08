@@ -33,6 +33,7 @@ import androidx.sqlite.db.SupportSQLiteQuery;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,12 +62,31 @@ public class AppRepository implements SharedPreferences.OnSharedPreferenceChange
 	private AppDatabase db;
 	private AppItemDao appItemDao;
 	private int sortVariant;
+	private static WeakReference<AppRepository> current = new WeakReference<>(null);
+
+	/** Re-reads the installed games folder after files were added from outside (e.g. a restore). */
+	public static void resyncInstalledApps() {
+		AppRepository repository = current.get();
+		if (repository != null) {
+			repository.resync();
+		}
+	}
+
+	private void resync() {
+		if (appItemDao == null) {
+			return;
+		}
+		compositeDisposable.add(appItemDao.getAllSingle(new MutableSortSQLiteQuery(this, orderTerms))
+				.subscribeOn(Schedulers.io())
+				.subscribe(list -> AppUtils.updateDb(this, new ArrayList<>(list)), errorsLiveData::postValue));
+	}
 
 	public AppRepository(AppListModel model) {
 		if (model.getAppRepository() != null) {
 			throw new IllegalStateException("You must get instance from 'AppListModel'");
 		}
 		this.context = model.getApplication();
+		current = new WeakReference<>(this);
 		orderTerms = context.getResources().getStringArray(R.array.pref_app_sort_values);
 		SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
 		try {

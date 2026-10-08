@@ -28,24 +28,56 @@ import com.nononsenseapps.filepicker.Utils;
 import java.io.File;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import ru.playsoftware.j2meloader.R;
+import ru.playsoftware.j2meloader.backup.BackupScope;
+import ru.playsoftware.j2meloader.backup.BackupUi;
+import ru.playsoftware.j2meloader.backup.CreateBackupContract;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.config.ProfilesActivity;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.PickDirResultContract;
+import ru.playsoftware.j2meloader.util.SAFFileResultContract;
 
 import static ru.playsoftware.j2meloader.util.Constants.PREF_ADD_CUTOUT_AREA;
 import static ru.playsoftware.j2meloader.util.Constants.PREF_EMULATOR_DIR;
 
 public class SettingsFragment extends PreferenceFragmentCompat {
+	private static final String STATE_BACKUP_SCOPE = "backup_scope";
 	private Preference prefFolder;
+	private BackupScope pendingBackupScope = BackupScope.SAVES;
+	private final ActivityResultLauncher<String> backupLauncher = registerForActivityResult(
+			new CreateBackupContract(),
+			this::onBackupTarget);
+	private final ActivityResultLauncher<String> restoreLauncher = registerForActivityResult(
+			new SAFFileResultContract(),
+			this::onRestoreSource);
 	private final ActivityResultLauncher<String> openDirLauncher = registerForActivityResult(
 			new PickDirResultContract(),
 			this::onPickDirResult);
+
+	@Override
+	public void onCreate(@Nullable Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		if (savedInstanceState != null) {
+			try {
+				pendingBackupScope = BackupScope.valueOf(savedInstanceState.getString(STATE_BACKUP_SCOPE));
+			} catch (RuntimeException ignored) {
+				// keep the default
+			}
+		}
+	}
+
+	@Override
+	public void onSaveInstanceState(@NonNull Bundle outState) {
+		super.onSaveInstanceState(outState);
+		outState.putString(STATE_BACKUP_SCOPE, pendingBackupScope.name());
+	}
 
 	@Override
 	public void onCreatePreferences(Bundle bundle, String s) {
@@ -63,6 +95,50 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 		});
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 			findPreference(PREF_ADD_CUTOUT_AREA).setVisible(true);
+		}
+		Preference backup = findPreference("pref_backup");
+		Preference restore = findPreference("pref_restore");
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			backup.setOnPreferenceClickListener(preference -> {
+				showBackupScopeDialog();
+				return true;
+			});
+			restore.setOnPreferenceClickListener(preference -> {
+				restoreLauncher.launch(null);
+				return true;
+			});
+		} else {
+			// the system file picker used for backups exists since Android 4.4
+			backup.setVisible(false);
+			restore.setVisible(false);
+		}
+	}
+
+	@RequiresApi(api = Build.VERSION_CODES.KITKAT)
+	private void showBackupScopeDialog() {
+		final int[] choice = {0};
+		new AlertDialog.Builder(requireActivity())
+				.setTitle(R.string.backup_choose_title)
+				.setSingleChoiceItems(new CharSequence[]{
+						getString(R.string.backup_scope_saves),
+						getString(R.string.backup_scope_all)}, 0, (d, which) -> choice[0] = which)
+				.setPositiveButton(android.R.string.ok, (d, w) -> {
+					pendingBackupScope = choice[0] == 1 ? BackupScope.ALL : BackupScope.SAVES;
+					backupLauncher.launch(BackupUi.suggestedName(pendingBackupScope));
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	private void onBackupTarget(Uri uri) {
+		if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			BackupUi.startBackup(requireActivity(), uri, pendingBackupScope);
+		}
+	}
+
+	private void onRestoreSource(Uri uri) {
+		if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			BackupUi.startRestore(requireActivity(), uri);
 		}
 	}
 

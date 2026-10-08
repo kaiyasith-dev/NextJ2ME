@@ -60,6 +60,18 @@
         android:icon="@drawable/ic_setting_folder"
         android:title="@string/pref_emulator_dir"
         tools:summary="/sdcard/NextJ2ME" />
+    <PreferenceCategory android:title="@string/pref_category_backup">
+        <Preference
+            android:key="pref_backup"
+            android:icon="@drawable/ic_setting_backup"
+            android:title="@string/pref_backup_title"
+            android:summary="@string/pref_backup_summary" />
+        <Preference
+            android:key="pref_restore"
+            android:icon="@drawable/ic_setting_restore"
+            android:title="@string/pref_restore_title"
+            android:summary="@string/pref_restore_summary" />
+    </PreferenceCategory>
     <PreferenceCategory android:title="@string/pref_category_experimental">
         <SwitchPreferenceCompat
             android:key="micro3d_using_message"

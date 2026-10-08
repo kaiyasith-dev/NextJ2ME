@@ -144,6 +144,11 @@ public class MigrationUtils {
 		}
 	}
 
+	/** Layout version of the work folder; stored in DATA_VERSION and in every backup file. */
+	public static int currentDataVersion() {
+		return VERSION;
+	}
+
 	public static void check(Context context) {
 		File file = new File(Config.getEmulatorDir(), "DATA_VERSION");
 		int version = 0;

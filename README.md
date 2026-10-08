@@ -26,6 +26,15 @@ Turn it on in **Settings → Developer / Debugging** (off by default). Then open
 - **Per-game persistence:** watches, frozen values and scan settings are saved separately for each game.
 - **Memory safety:** scans are capped, history is trimmed when memory runs low and the user is told when results are dropped, so the debugger does not take the game down.
 
+### Backup and restore
+
+**Settings → Backup and restore** saves your data to a single zip file and loads it back. The file is chosen with Android's system file picker, so no storage permission is needed and it can be stored anywhere: internal storage, an SD card or a cloud-backed folder.
+
+- **Saves and settings** (small): game saves, per-game settings, profiles, virtual keyboard layouts and debugger data.
+- **Everything** (large): the above plus the installed games.
+- Restoring checks the file first, asks for confirmation and overwrites files with the same names; other files are left alone. Files are written through a temporary name, so a failure never leaves a half-written file.
+- A backup is a plain zip file; you can open it on a computer.
+
 ### Branding
 
 New launcher icon (light style), app name and About screen that credit the original project.
