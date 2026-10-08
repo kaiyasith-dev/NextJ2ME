@@ -49,6 +49,7 @@ import ru.playsoftware.j2meloader.appsdb.AppRepository;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.util.ConverterException;
 import ru.playsoftware.j2meloader.util.FileUtils;
+import ru.playsoftware.j2meloader.util.SaveSlots;
 import ru.playsoftware.j2meloader.util.ZipUtils;
 import ru.woesss.j2me.jar.Descriptor;
 
@@ -360,6 +361,8 @@ public class AppInstaller {
 					FileUtils.deleteDirectory(newRms);
 					rms.renameTo(newRms);
 				}
+				// the extra save slots and the chosen one go with the game's folder
+				new SaveSlots(new File(Config.getEmulatorDir())).moveAll(path, appDirName);
 				File config = new File(Config.getConfigsDir(), path);
 				if (config.exists()) {
 					File newConfig = new File(Config.getConfigsDir(), appDirName);

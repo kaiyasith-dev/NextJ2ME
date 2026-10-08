@@ -10,6 +10,9 @@
         android:id="@+id/action_context_settings"
         android:title="@string/action_settings" />
     <item
+        android:id="@+id/action_context_save_slots"
+        android:title="@string/action_context_save_slots" />
+    <item
         android:id="@+id/action_context_clear_data"
         android:title="@string/action_context_clear_data" />
     <item

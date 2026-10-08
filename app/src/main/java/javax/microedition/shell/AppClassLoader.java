@@ -36,6 +36,7 @@ import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.IOUtils;
+import ru.playsoftware.j2meloader.util.SaveSlots;
 
 public class AppClassLoader extends DexClassLoader {
 	private static final String TAG = AppClassLoader.class.getName();
@@ -57,7 +58,12 @@ public class AppClassLoader extends DexClassLoader {
 	}
 
 	public static void setDataDir(File appDir) {
-		dataDir = appDir.getParentFile().getParent() + Config.MIDLET_DATA_DIR + appDir.getName();
+		// the folder of the save slot the user chose for this game (the original folder unless changed)
+		File workDir = appDir.getParentFile().getParentFile();
+		File dir = new SaveSlots(workDir).activeDir(appDir.getName());
+		//noinspection ResultOfMethodCallIgnored
+		dir.mkdirs();
+		dataDir = dir.getPath();
 	}
 
 	public static InputStream getResourceAsStream(Class<?> resClass, String resName) {

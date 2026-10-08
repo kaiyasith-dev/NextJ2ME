@@ -73,6 +73,7 @@ import ru.playsoftware.j2meloader.config.ShaderInfo;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.IOUtils;
+import ru.playsoftware.j2meloader.util.SaveSlots;
 import ru.woesss.j2me.jar.Descriptor;
 
 public class MicroLoader {
@@ -216,7 +217,8 @@ public class MicroLoader {
 				+ (country.length() == 2 ? "-" + country : ""));
 		// FIXME: 21.10.2020 Config.getDataDir() may be in different storage
 		final String primaryStoragePath = Environment.getExternalStorageDirectory().getPath();
-		String dataUri = "file:///c:" + Config.getDataDir().substring(primaryStoragePath.length()) + appDirName;
+		String savePath = new SaveSlots(new File(Config.getEmulatorDir())).activeDir(appDirName).getPath();
+		String dataUri = "file:///c:" + savePath.substring(primaryStoragePath.length());
 		String musicUri = "file:///c:" + Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
 				.getPath().substring(primaryStoragePath.length());
 		System.setProperty("fileconn.dir.cache", dataUri + "/cache");

@@ -114,22 +114,36 @@ public class AppUtils {
 		return null;
 	}
 
-	/** Folder where the game keeps its saves (record stores). */
-	public static File getDataDir(AppItem item) {
-		return new File(Config.getDataDir(), item.getPath());
+	/** The save slots of the games in the current work folder. */
+	public static SaveSlots saveSlots() {
+		return new SaveSlots(new File(Config.getEmulatorDir()));
 	}
 
-	/** Deletes the saved data of the game; the game itself and its settings stay. */
+	/** The folder that holds all the saves of the game, every slot included. */
+	public static File[] getAllSaveDirs(AppItem item) {
+		return new File[]{saveSlots().gameDir(item.getPath())};
+	}
+
+	/** Size of the saves in the slot the game uses (the other slots are not counted). */
+	public static long getActiveSaveSize(AppItem item) {
+		SaveSlots slots = saveSlots();
+		return slots.size(item.getPath(), slots.active(item.getPath()));
+	}
+
+	/** Deletes the saved data of the game's active slot; the slot, the other slots, the game and its settings stay. */
 	public static boolean clearData(AppItem item) {
-		File dir = getDataDir(item);
-		return !dir.exists() || FileUtils.deleteDirectory(dir);
+		SaveSlots slots = saveSlots();
+		String slot = slots.active(item.getPath());
+		slots.clear(item.getPath(), slot);
+		return slots.isEmpty(item.getPath(), slot);
 	}
 
 	public static void deleteApp(AppItem item) {
 		File appDir = new File(item.getPathExt());
 		FileUtils.deleteDirectory(appDir);
-		File appSaveDir = new File(Config.getDataDir(), item.getPath());
+		File appSaveDir = new File(Config.getDataDir(), item.getPath()); // saves of earlier versions
 		FileUtils.deleteDirectory(appSaveDir);
+		saveSlots().deleteAll(item.getPath());
 		File appConfigsDir = new File(Config.getConfigsDir(), item.getPath());
 		FileUtils.deleteDirectory(appConfigsDir);
 	}

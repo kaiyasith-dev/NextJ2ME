@@ -27,6 +27,10 @@ Turn it on in **Settings → Developer / Debugging** (off by default). Then open
 - **Per-game persistence:** watches, frozen values and scan settings are saved separately for each game.
 - **Memory safety:** scans are capped, history is trimmed when memory runs low and the user is told when results are dropped, so the debugger does not take the game down.
 
+### Save slots
+
+Each game can keep several named save slots, for example one per player or one before a hard level. Long-press a game and choose **Save slots**: the slot marked ● is the one the game uses, and you can make a new slot (empty or a copy of the current saves), switch slots, duplicate, rename and delete them. The game picks its slot when it starts, so nothing is copied when you switch, and nothing can be changed while the game is open. The saves of a game live in `saves/<game>/`: the "Default" slot is that folder itself, and the slots you make are in its `slots` subfolder. Slots are included in backups, and "Clear data" clears only the slot in use.
+
 ### Backup and restore
 
 **Settings → Backup and restore** saves your data to a single zip file and loads it back. The file is chosen with Android's system file picker, so no storage permission is needed and it can be stored anywhere: internal storage, an SD card or a cloud-backed folder.

@@ -43,8 +43,11 @@ public final class AppSizeCache {
 	private final Map<String, Entry> entries = new HashMap<>();
 	private int fullScans;
 
-	/** Game files (cached) plus saved data (fresh), in bytes. Reads the disk: not for the UI thread. */
-	public synchronized long totalSize(String key, File appDir, File dataDir) {
+	/**
+	 * Game files (cached) plus saved data (fresh, every folder given), in bytes. Reads the disk:
+	 * not for the UI thread.
+	 */
+	public synchronized long totalSize(String key, File appDir, File... dataDirs) {
 		long time = appDir.lastModified();
 		Entry e = entries.get(key);
 		if (e == null || e.folderTime != time) {
@@ -52,7 +55,11 @@ public final class AppSizeCache {
 			entries.put(key, e);
 			fullScans++;
 		}
-		return e.bytes + StorageSize.sizeOf(dataDir);
+		long total = e.bytes;
+		for (File dataDir : dataDirs) {
+			total += StorageSize.sizeOf(dataDir);
+		}
+		return total;
 	}
 
 	/** Forgets the games that are no longer listed. */

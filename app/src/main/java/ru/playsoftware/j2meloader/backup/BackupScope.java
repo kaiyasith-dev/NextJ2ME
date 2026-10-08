@@ -23,9 +23,9 @@ import java.util.Set;
 /** What goes into a backup. Folders are relative to the emulator work folder. */
 public enum BackupScope {
 	/** Game saves, per-game settings, profiles and debugger data: small. */
-	SAVES("data", "configs", "templates", "fs", "debugger"),
+	SAVES("saves", "configs", "templates", "fs", "debugger"),
 	/** Everything above plus the installed games: can be large. */
-	ALL("data", "configs", "templates", "fs", "debugger", "converted", "shaders");
+	ALL("saves", "configs", "templates", "fs", "debugger", "converted", "shaders");
 
 	private final String[] dirs;
 

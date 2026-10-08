@@ -96,6 +96,7 @@ import ru.playsoftware.j2meloader.util.AppUtils;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.LogUtils;
+import ru.playsoftware.j2meloader.util.SaveSlots;
 import ru.playsoftware.j2meloader.util.StorageSize;
 import ru.woesss.j2me.installer.InstallerDialog;
 
@@ -223,7 +224,7 @@ public class AppsListFragment extends ListFragment {
 	private void confirmClearData(AppItem item) {
 		clearDataDisposables.add(Single.fromCallable(() -> new long[]{
 						StorageSize.sizeOf(new File(item.getPathExt())),
-						StorageSize.sizeOf(AppUtils.getDataDir(item))})
+						AppUtils.getActiveSaveSize(item)})
 				.subscribeOn(Schedulers.io())
 				.observeOn(AndroidSchedulers.mainThread())
 				.subscribe(sizes -> {
@@ -236,11 +237,17 @@ public class AppsListFragment extends ListFragment {
 						return;
 					}
 					Locale locale = Locale.getDefault();
+					String message = getString(R.string.clear_data_message, item.getTitle(),
+							StorageSize.formatKb(sizes[0], locale), StorageSize.formatKb(sizes[1], locale));
+					SaveSlots slots = AppUtils.saveSlots();
+					if (!slots.list(item.getPath()).isEmpty()) {
+						// only the slot the game is set to use is cleared
+						message += "\n\n" + getString(R.string.clear_data_slot, SaveSlots.label(
+								slots.active(item.getPath()), getString(R.string.save_slots_default)));
+					}
 					new AlertDialog.Builder(requireActivity())
 							.setTitle(R.string.action_context_clear_data)
-							.setMessage(getString(R.string.clear_data_message, item.getTitle(),
-									StorageSize.formatKb(sizes[0], locale),
-									StorageSize.formatKb(sizes[1], locale)))
+							.setMessage(message)
 							.setPositiveButton(android.R.string.ok, (d, w) -> clearData(item, sizes[1]))
 							.setNegativeButton(android.R.string.cancel, null)
 							.show();
@@ -307,6 +314,8 @@ public class AppsListFragment extends ListFragment {
 			alertRename(index);
 		} else if (itemId == R.id.action_context_settings) {
 			Config.startApp(requireActivity(), appItem.getTitle(), appItem.getPathExt(), true);
+		} else if (itemId == R.id.action_context_save_slots) {
+			SaveSlotsDialog.show(requireActivity(), appItem, adapter::refreshSizes);
 		} else if (itemId == R.id.action_context_clear_data) {
 			confirmClearData(appItem);
 		} else if (itemId == R.id.action_context_reinstall) {

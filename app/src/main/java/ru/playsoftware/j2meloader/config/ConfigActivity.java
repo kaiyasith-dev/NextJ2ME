@@ -69,6 +69,7 @@ import ru.playsoftware.j2meloader.base.BaseActivity;
 import ru.playsoftware.j2meloader.databinding.ActivityConfigBinding;
 import ru.playsoftware.j2meloader.settings.KeyMapperActivity;
 import ru.playsoftware.j2meloader.util.FileUtils;
+import ru.playsoftware.j2meloader.util.SaveSlots;
 import yuku.ambilwarna.AmbilWarnaDialog;
 
 import static ru.playsoftware.j2meloader.util.Constants.*;
@@ -144,7 +145,6 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 				return;
 			}
 			dataDir = new File(workDir + Config.MIDLET_DATA_DIR + appDir.getName());
-			dataDir.mkdirs();
 			configDir = new File(workDir + Config.MIDLET_CONFIGS_DIR + appDir.getName());
 		}
 		configDir.mkdirs();
@@ -768,7 +768,11 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		AlertDialog.Builder builder = new AlertDialog.Builder(this)
 				.setTitle(android.R.string.dialog_alert_title)
 				.setMessage(R.string.message_clear_data)
-				.setPositiveButton(android.R.string.ok, (d, w) -> FileUtils.clearDirectory(dataDir))
+				.setPositiveButton(android.R.string.ok, (d, w) -> {
+					// the saves of the slot the game is set to use
+					SaveSlots slots = new SaveSlots(new File(workDir));
+					slots.clear(dataDir.getName(), slots.active(dataDir.getName()));
+				})
 				.setNegativeButton(android.R.string.cancel, null);
 		builder.show();
 	}

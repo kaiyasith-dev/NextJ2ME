@@ -168,7 +168,7 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 					}
 					paths.add(item.getPath());
 					measured.put(item.getPath(), sizeCache.totalSize(item.getPath(),
-							new File(item.getPathExt()), AppUtils.getDataDir(item)));
+							new File(item.getPathExt()), AppUtils.getAllSaveDirs(item)));
 					ScreenInfo screen = screenCache.get(item.getPath(),
 							new File(new File(configsDir, item.getPath()), Config.MIDLET_CONFIG_FILE),
 							defaultConfig);
