@@ -61,6 +61,11 @@ public class InstallerDialog extends DialogFragment {
 	private Button btnRun;
 	private AppInstaller installer;
 	private AlertDialog mDialog;
+	private AlertDialog detailsDialog;
+	/** True once the user confirmed the install details; they are asked once per install. */
+	private boolean detailsEdited;
+	/** Reinstalling an installed game: its name and vendor identify it, so they are not asked. */
+	private boolean reinstalling;
 
 	private DialogInstallerBinding binding;
 
@@ -131,6 +136,14 @@ public class InstallerDialog extends DialogFragment {
 	@Override
 	public void onDestroy() {
 		compositeDisposable.dispose();
+		if (detailsDialog != null) {
+			try {
+				detailsDialog.dismiss();
+			} catch (RuntimeException ignored) {
+				// already gone
+			}
+			detailsDialog = null;
+		}
 		super.onDestroy();
 	}
 
@@ -155,6 +168,7 @@ public class InstallerDialog extends DialogFragment {
 	}
 
 	private void installApp(String path, Uri uri) {
+		detailsEdited = false;
 		installer = new AppInstaller(path, uri, requireActivity().getApplication(), appRepository);
 		btnClose.setOnClickListener(v -> {
 			installer.deleteTemp();
@@ -169,6 +183,7 @@ public class InstallerDialog extends DialogFragment {
 	}
 
 	private void reinstallApp(int id) {
+		reinstalling = true;
 		installer = new AppInstaller(id, requireActivity().getApplication(), appRepository);
 		btnClose.setOnClickListener(v -> {
 			installer.deleteTemp();
@@ -215,8 +230,44 @@ public class InstallerDialog extends DialogFragment {
 		btnClose.setVisibility(View.VISIBLE);
 	}
 
+	/** Lets the user change name, vendor, version... before a new game is installed. */
+	private void showDetails() {
+		hideProgress();
+		hideButtons();
+		detailsDialog = InstallDetailsDialog.show(requireActivity(), installer.getEffectiveDescriptor(),
+				installer.getJar() == null, new InstallDetailsDialog.Listener() {
+					@Override
+					public void onConfirmed(InstallEdits edits) {
+						detailsDialog = null;
+						detailsEdited = true;
+						showProgress();
+						binding.installationStatus.setText(R.string.loading_info);
+						// the new name may match an installed game: that needs a database lookup
+						Disposable disposable = Single.fromCallable(() -> installer.applyEdits(edits))
+								.subscribeOn(Schedulers.computation())
+								.observeOn(AndroidSchedulers.mainThread())
+								.subscribe(status -> {
+									if (status == AppInstaller.STATUS_NEW) {
+										convert();
+									} else {
+										onProgress(status);
+									}
+								}, InstallerDialog.this::onError);
+						compositeDisposable.add(disposable);
+					}
+
+					@Override
+					public void onCancelled() {
+						detailsDialog = null;
+						installer.deleteTemp();
+						installer.clearCache();
+						dismiss();
+					}
+				});
+	}
+
 	private void convert() {
-		Descriptor nd = installer.getNewDescriptor();
+		Descriptor nd = installer.getEffectiveDescriptor();
 		SpannableStringBuilder info = nd.getInfo(requireActivity());
 		mDialog.setMessage(info);
 		binding.installationStatus.setText(R.string.converting_wait);
@@ -267,7 +318,14 @@ public class InstallerDialog extends DialogFragment {
 			showButtons();
 			return;
 		}
-		Descriptor nd = installer.getNewDescriptor();
+		boolean installable = status == AppInstaller.STATUS_NEW || status == AppInstaller.STATUS_OLDEST
+				|| status == AppInstaller.STATUS_EQUAL || status == AppInstaller.STATUS_NEWEST;
+		if (installable && !detailsEdited && !reinstalling) {
+			// ask for the details first; "already installed" is decided from the name typed there
+			showDetails();
+			return;
+		}
+		Descriptor nd = installer.getEffectiveDescriptor();
 		SpannableStringBuilder message;
 		switch (status) {
 			case AppInstaller.STATUS_NEW:

@@ -114,6 +114,17 @@ public class AppUtils {
 		return null;
 	}
 
+	/** Folder where the game keeps its saves (record stores). */
+	public static File getDataDir(AppItem item) {
+		return new File(Config.getDataDir(), item.getPath());
+	}
+
+	/** Deletes the saved data of the game; the game itself and its settings stay. */
+	public static boolean clearData(AppItem item) {
+		File dir = getDataDir(item);
+		return !dir.exists() || FileUtils.deleteDirectory(dir);
+	}
+
 	public static void deleteApp(AppItem item) {
 		File appDir = new File(item.getPathExt());
 		FileUtils.deleteDirectory(appDir);
@@ -129,6 +140,8 @@ public class AppUtils {
 			// TODO: 30.07.2021 incomplete installation - maybe can continue?
 			FileUtils.deleteDirectory(tmp);
 		}
+		// a reinstall that was cut short: put the old game back or drop the leftover
+		FileUtils.recoverReplaced(new File(Config.getAppDir()));
 		String[] appFolders = new File(Config.getAppDir()).list();
 		if (appFolders == null || appFolders.length == 0) {
 			// If db isn't empty

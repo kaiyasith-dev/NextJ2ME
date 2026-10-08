@@ -72,12 +72,16 @@ import androidx.preference.PreferenceManager;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Observable;
+import io.reactivex.Single;
 import io.reactivex.ObservableOnSubscribe;
 import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 import ru.playsoftware.j2meloader.R;
 import ru.playsoftware.j2meloader.appsdb.AppRepository;
 import ru.playsoftware.j2meloader.config.Config;
@@ -92,6 +96,7 @@ import ru.playsoftware.j2meloader.util.AppUtils;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.FileUtils;
 import ru.playsoftware.j2meloader.util.LogUtils;
+import ru.playsoftware.j2meloader.util.StorageSize;
 import ru.woesss.j2me.installer.InstallerDialog;
 
 public class AppsListFragment extends ListFragment {
@@ -101,6 +106,7 @@ public class AppsListFragment extends ListFragment {
 	private SharedPreferences preferences;
 	private AppRepository appRepository;
 	private Disposable searchViewDisposable;
+	private final CompositeDisposable clearDataDisposables = new CompositeDisposable();
 
 	FragmentAppsListBinding binding;
 
@@ -213,6 +219,47 @@ public class AppsListFragment extends ListFragment {
 		builder.show();
 	}
 
+	/** Measures the game's files and saves, then asks before deleting the saved data. */
+	private void confirmClearData(AppItem item) {
+		clearDataDisposables.add(Single.fromCallable(() -> new long[]{
+						StorageSize.sizeOf(new File(item.getPathExt())),
+						StorageSize.sizeOf(AppUtils.getDataDir(item))})
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.subscribe(sizes -> {
+					if (!isAdded()) {
+						return;
+					}
+					if (sizes[1] == 0) {
+						Toast.makeText(requireContext(),
+								getString(R.string.clear_data_none, item.getTitle()), Toast.LENGTH_SHORT).show();
+						return;
+					}
+					Locale locale = Locale.getDefault();
+					new AlertDialog.Builder(requireActivity())
+							.setTitle(R.string.action_context_clear_data)
+							.setMessage(getString(R.string.clear_data_message, item.getTitle(),
+									StorageSize.formatKb(sizes[0], locale),
+									StorageSize.formatKb(sizes[1], locale)))
+							.setPositiveButton(android.R.string.ok, (d, w) -> clearData(item, sizes[1]))
+							.setNegativeButton(android.R.string.cancel, null)
+							.show();
+				}, e -> Toast.makeText(requireContext(), R.string.error, Toast.LENGTH_SHORT).show()));
+	}
+
+	private void clearData(AppItem item, long bytes) {
+		Context app = requireContext().getApplicationContext();
+		clearDataDisposables.add(Single.fromCallable(() -> AppUtils.clearData(item))
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.subscribe(ok -> {
+					adapter.refreshSizes();
+					Toast.makeText(app, ok
+							? app.getString(R.string.clear_data_done, StorageSize.formatKb(bytes, Locale.getDefault()))
+							: app.getString(R.string.clear_data_failed), Toast.LENGTH_LONG).show();
+				}, e -> Toast.makeText(app, R.string.clear_data_failed, Toast.LENGTH_LONG).show()));
+	}
+
 	private void alertDelete(AppItem item) {
 		AlertDialog.Builder builder = new AlertDialog.Builder(requireActivity())
 				.setTitle(android.R.string.dialog_alert_title)
@@ -260,6 +307,8 @@ public class AppsListFragment extends ListFragment {
 			alertRename(index);
 		} else if (itemId == R.id.action_context_settings) {
 			Config.startApp(requireActivity(), appItem.getTitle(), appItem.getPathExt(), true);
+		} else if (itemId == R.id.action_context_clear_data) {
+			confirmClearData(appItem);
 		} else if (itemId == R.id.action_context_reinstall) {
 			InstallerDialog.newInstance(appItem.getId()).show(getParentFragmentManager(), "installer");
 		} else if (itemId == R.id.action_context_delete) {
@@ -430,6 +479,13 @@ public class AppsListFragment extends ListFragment {
 	}
 
 	@Override
+	public void onResume() {
+		super.onResume();
+		// saves may have changed while a game was running
+		adapter.refreshSizesIfStale();
+	}
+
+	@Override
 	public void onDestroyView() {
 		super.onDestroyView();
 		binding = null;
@@ -440,6 +496,8 @@ public class AppsListFragment extends ListFragment {
 		if (searchViewDisposable != null) {
 			searchViewDisposable.dispose();
 		}
+		clearDataDisposables.dispose();
+		adapter.release();
 		super.onDestroy();
 	}
 }

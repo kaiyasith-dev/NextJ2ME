@@ -58,7 +58,7 @@ public class Descriptor {
 	public static final String MIDLET_DATA_SIZE = "MIDlet-Data-Size";
 	public static final String MIDLET_DELETE_CONFIRM = "MIDlet-Delete-Confirm ";
 	public static final String MIDLET_DELETE_NOTIFY = "MIDlet-Delete-Notify";
-	private static final String MIDLET_DESCRIPTION = "MIDlet-Description";
+	public static final String MIDLET_DESCRIPTION = "MIDlet-Description";
 	private static final String MIDLET_ICON = "MIDlet-Icon";
 	public static final String MIDLET_INFO_URL = "MIDlet-Info-URL";
 	public static final String MIDLET_INSTALL_NOTIFY = "MIDlet-Install-Notify";
@@ -106,9 +106,25 @@ public class Descriptor {
 
 	}
 
+	private Descriptor(boolean isJad) {
+		this.isJad = isJad;
+	}
+
+	/** A copy with its own attribute map, so it can be changed without touching this one. */
+	public Descriptor copy() {
+		Descriptor d = new Descriptor(isJad);
+		d.attributes.putAll(attributes);
+		return d;
+	}
+
 	public int compareVersion(String version) {
+		return compareVersions(getVersion(), version);
+	}
+
+	/** Compares dotted versions number by number: 1 if {@code mine} is newer, -1 if older, 0 if equal. */
+	public static int compareVersions(String mine, String version) {
 		if (version == null) return 1;
-		String[] mv = getVersion().split("\\.");
+		String[] mv = mine.split("\\.");
 		String[] ov = version.split("\\.");
 		int len = Math.max(mv.length, ov.length);
 		for (int i = 0; i < len; i++) {

@@ -76,6 +76,8 @@ public class AppInstaller {
 	private File tmpDir;
 	private AppItem currentApp;
 	private File srcFile;
+	/** What the user changed in the install details dialog; applied when installing. */
+	private InstallEdits edits = InstallEdits.none();
 
 	AppInstaller(String path, Uri uri, Application context, AppRepository appRepository) {
 		id = -1;
@@ -95,6 +97,25 @@ public class AppInstaller {
 
 	Descriptor getNewDescriptor() {
 		return newDesc;
+	}
+
+	/** The descriptor as it will be installed: the loaded one with the user's changes applied. */
+	Descriptor getEffectiveDescriptor() {
+		Descriptor d = newDesc.copy();
+		edits.applyTo(d.getAttrs());
+		return d;
+	}
+
+	/**
+	 * Stores the user's changes and checks the (possibly new) name and vendor against the
+	 * installed apps. Blocks on the database: call it off the main thread.
+	 *
+	 * @return the same kind of status as loading the descriptor (new app, or an existing one)
+	 */
+	int applyEdits(InstallEdits edits) {
+		this.edits = edits;
+		Descriptor d = getEffectiveDescriptor();
+		return checkIdentity(d.getName(), d.getVendor(), d.getVersion());
 	}
 
 	String getCurrentVersion() {
@@ -299,6 +320,7 @@ public class AppInstaller {
 			manifest.merge(newDesc);
 			newDesc = manifest;
 		}
+		edits.applyTo(newDesc.getAttrs());
 		File resJar = new File(tmpDir, Config.MIDLET_RES_FILE);
 		FileUtils.copyFileUsingChannel(srcJar, resJar);
 		String icon = newDesc.getIcon();
@@ -314,9 +336,11 @@ public class AppInstaller {
 			}
 		}
 		newDesc.writeTo(new File(tmpDir, Config.MIDLET_MANIFEST_FILE));
-		FileUtils.deleteDirectory(targetDir);
-		if (!tmpDir.renameTo(targetDir)) {
-			throw new ConverterException("Can't move '" + tmpDir + "' to '" + targetDir + "'");
+		// the old copy stays in place until the new one is moved in
+		try {
+			FileUtils.replaceDirectory(targetDir, tmpDir);
+		} catch (IOException e) {
+			throw new ConverterException("Can't move '" + tmpDir + "' to '" + targetDir + "'", e);
 		}
 		String name = newDesc.getName();
 		String vendor = newDesc.getVendor();
@@ -385,17 +409,20 @@ public class AppInstaller {
 	}
 
 	private int checkDescriptor() {
-		// Remove invalid characters from app path
-		String name = newDesc.getName();
-		String vendor = newDesc.getVendor();
+		return checkIdentity(newDesc.getName(), newDesc.getVendor(), newDesc.getVersion());
+	}
+
+	private int checkIdentity(String name, String vendor, String version) {
 		currentApp = appRepository.get(name, vendor);
 		if (currentApp == null) {
-			generatePathName(name.replaceAll(FileUtils.ILLEGAL_FILENAME_CHARS, "").trim());
+			// Remove invalid characters from app path
+			String folder = name.replaceAll(FileUtils.ILLEGAL_FILENAME_CHARS, "").trim();
+			generatePathName(folder.isEmpty() ? "app" : folder);
 			return STATUS_NEW;
 		}
 		appDirName = currentApp.getPath();
 		targetDir = new File(Config.getAppDir(), appDirName);
-		return newDesc.compareVersion(currentApp.getVersion());
+		return Descriptor.compareVersions(version, currentApp.getVersion());
 	}
 
 	private void generatePathName(String name) {

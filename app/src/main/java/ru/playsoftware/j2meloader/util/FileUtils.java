@@ -78,6 +78,57 @@ public class FileUtils {
 		}
 	}
 
+	/** Prefix of the folder an installed game is moved to while it is being replaced. */
+	private static final String REPLACED_PREFIX = ".old-";
+
+	/**
+	 * Puts {@code replacement} in the place of {@code target} without a moment where the game
+	 * exists in neither place: the old folder is moved aside first and moved back if the new one
+	 * can not be moved in. If the app is killed in between, {@link #recoverReplaced} puts it back
+	 * on the next start.
+	 *
+	 * @throws IOException if the replacement could not be moved in; {@code target} is then unchanged
+	 */
+	public static void replaceDirectory(File target, File replacement) throws IOException {
+		File parent = target.getParentFile();
+		File old = null;
+		if (target.exists()) {
+			old = new File(parent, REPLACED_PREFIX + target.getName());
+			deleteDirectory(old); // left over from an earlier attempt
+			if (!target.renameTo(old)) {
+				throw new IOException("Can't move aside '" + target + "'");
+			}
+		}
+		if (!replacement.renameTo(target)) {
+			if (old != null && !old.renameTo(target)) {
+				throw new IOException("Can't move '" + replacement + "' to '" + target
+						+ "' and can't restore the old copy, it is in '" + old + "'");
+			}
+			throw new IOException("Can't move '" + replacement + "' to '" + target + "'");
+		}
+		if (old != null) {
+			deleteDirectory(old);
+		}
+	}
+
+	/** Finishes or undoes a {@link #replaceDirectory} that was cut short, e.g. by a killed app. */
+	public static void recoverReplaced(File parent) {
+		String[] names = parent.list();
+		if (names == null) {
+			return;
+		}
+		for (String name : names) {
+			if (!name.startsWith(REPLACED_PREFIX)) {
+				continue;
+			}
+			File old = new File(parent, name);
+			File original = new File(parent, name.substring(REPLACED_PREFIX.length()));
+			if (original.exists() || !old.renameTo(original)) {
+				deleteDirectory(old);
+			}
+		}
+	}
+
 	public static boolean deleteDirectory(File dir) {
 		if (dir.isDirectory()) {
 			File[] listFiles = dir.listFiles();

@@ -52,6 +52,17 @@
                 tools:text="Example MIDlet Vendor Ltd." />
 
             <TextView
+                android:id="@+id/app_size"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_marginRight="8dp"
+                android:textAppearance="?android:textAppearance"
+                android:textColor="?textColorSecondary"
+                android:textSize="12sp"
+                tools:text="1,234 KB" />
+
+            <TextView
                 android:id="@+id/app_version"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
