@@ -56,6 +56,11 @@
         <item>@string/pref_frame_generation_blend</item>
         <item>@string/pref_frame_generation_motion</item>
     </string-array>
+    <string-array name="pref_render_3d_entries">
+        <item>@string/pref_render_3d_normal</item>
+        <item>@string/pref_render_3d_2x</item>
+        <item>@string/pref_render_3d_3x</item>
+    </string-array>
     <string-array name="pref_scale_type_entries" >
         <item>@string/pref_screen_scale_type_none</item>
         <item>@string/pref_screen_scale_type_fit</item>

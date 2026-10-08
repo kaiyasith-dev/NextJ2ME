@@ -601,6 +601,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		int fpsLimit = params.fpsLimit;
 		binding.fpsLimit.setText(fpsLimit > 0 ? Integer.toString(fpsLimit) : "");
 		binding.frameGenerationSelector.setSelection(params.frameGeneration);
+		binding.render3dQualitySelector.setSelection(params.render3dQuality);
 
 		binding.buttonsLayoutSelector.setSelection(params.keyCodesLayout);
 		binding.buttonShapeSelector.setSelection(params.vkButtonShape);
@@ -655,6 +656,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			params.showFps = binding.showFpsToggle.isChecked();
 			params.fpsLimit = parseInt(binding.fpsLimit.getText().toString());
 		params.frameGeneration = mode == 1 ? binding.frameGenerationSelector.getSelectedItemPosition() : 0;
+		params.render3dQuality = binding.render3dQualitySelector.getSelectedItemPosition();
 
 			try {
 				params.fontSizeSmall = Integer.parseInt(binding.fontSizeSmall.getText().toString());

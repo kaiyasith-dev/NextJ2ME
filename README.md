@@ -55,6 +55,12 @@ For games that cap their own frame rate (for example 20-30 fps), the per-game se
 
 It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.
 
+### 3D resolution (Mascot Capsule, experimental)
+
+The per-game setting **3D resolution** renders the 3D scene of Mascot Capsule games at 2x or 3x the game's size and averages it down, so polygon edges are smooth instead of jagged. The game still sees a picture of its own size, so this smooths edges but does not add detail or sharpen textures. It costs fill rate: 3x draws nine times as many pixels. If the device can not allocate the larger buffer, the game falls back to the normal size. With the setting on **Normal** (the default) nothing changes.
+
+It does not cover M3G (JSR-184) games, or games that draw their 3D with their own software code.
+
 ### Built-in shaders
 
 The shader list (graphics mode **HW acceleration (OpenGL ES)**) has five filters that need no files in the shaders folder. Each has sliders behind the tune button next to the list.

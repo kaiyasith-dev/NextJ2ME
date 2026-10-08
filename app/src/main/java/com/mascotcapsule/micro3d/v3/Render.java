@@ -66,6 +66,9 @@ class Render {
 	private Graphics graphics;
 	private Bitmap mBitmapBuffer;
 	private int width, height;
+	/** Renders at a multiple of the screen size when the user asked for it; otherwise null. */
+	private SuperSampler superSampler;
+	private int superSamplingWanted = 1;
 	private final Rect gClip = new Rect();
 	private final Rect clip = new Rect();
 	private final boolean skipSprites = Boolean.getBoolean("micro3d.v3.skipSprites");
@@ -140,7 +143,8 @@ class Render {
 		if (eglContext == null) init();
 		mBitmapBuffer = graphics.getBitmap();
 		EGL10 egl = (EGL10) EGLContext.getEGL();
-		if (this.width != width || this.height != height) {
+		boolean resized = this.width != width || this.height != height;
+		if (resized) {
 
 			if (this.eglWindowSurface != null) {
 				releaseEglContext();
@@ -162,6 +166,7 @@ class Render {
 			glClear(GL_COLOR_BUFFER_BIT);
 		}
 		egl.eglMakeCurrent(eglDisplay, eglWindowSurface, eglWindowSurface, eglContext);
+		updateSuperSampler(resized);
 		Rect clip = this.clip;
 		canvas.getClipBounds(clip);
 		int l = clip.left;
@@ -173,11 +178,41 @@ class Render {
 			glDisable(GL_SCISSOR_TEST);
 		} else {
 			glEnable(GL_SCISSOR_TEST);
-			glScissor(l, t, r - l, b - t);
+			int k = superSampler == null ? 1 : superSampler.scale;
+			glScissor(l * k, t * k, (r - l) * k, (b - t) * k);
 		}
 		glClear(GL_DEPTH_BUFFER_BIT);
 		backCopied = false;
 		egl.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
+	}
+
+	/**
+	 * Applies the user's 3D resolution setting. With the normal size nothing is created and the
+	 * pbuffer is drawn on directly, exactly as without this feature. Must be called with the EGL
+	 * context current, after the pbuffer for the current screen size exists.
+	 */
+	private void updateSuperSampler(boolean resized) {
+		int wanted = Render3DSettings.getSupersampling();
+		if (!resized && wanted == superSamplingWanted) {
+			if (superSampler != null) {
+				superSampler.bind();
+			}
+			return;
+		}
+		superSamplingWanted = wanted;
+		boolean had = superSampler != null;
+		if (had) {
+			superSampler.destroy();
+			superSampler = null;
+		}
+		if (wanted > 1) {
+			superSampler = SuperSampler.create(width, height, wanted);
+		}
+		if (superSampler != null) {
+			superSampler.bind();
+		} else if (had) {
+			glViewport(0, 0, width, height);
+		}
 	}
 
 	private static void applyBlending(int blendMode) {
@@ -512,6 +547,9 @@ class Render {
 		stack.clear();
 		if (postCopy2D) {
 			copy2d(false);
+		}
+		if (superSampler != null) {
+			superSampler.resolve();
 		}
 		Rect clip = this.gClip;
 		Utils.glReadPixels(clip.left, clip.top, clip.width(), clip.height(), mBitmapBuffer);
@@ -1240,7 +1278,8 @@ class Render {
 			glDisable(GL_SCISSOR_TEST);
 		} else {
 			glEnable(GL_SCISSOR_TEST);
-			glScissor(l, t, r - l, b - t);
+			int k = superSampler == null ? 1 : superSampler.scale;
+			glScissor(l * k, t * k, (r - l) * k, (b - t) * k);
 		}
 		releaseEglContext();
 	}

@@ -49,6 +49,8 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import com.mascotcapsule.micro3d.v3.Render3DSettings;
+
 import javax.microedition.lcdui.Canvas;
 import javax.microedition.lcdui.Display;
 import javax.microedition.lcdui.Displayable;
@@ -281,6 +283,7 @@ public class MicroLoader {
 			Canvas.setShowFps(params.showFps);
 			Canvas.setLimitFps(params.fpsLimit);
 			Canvas.setFrameGeneration(params.graphicsMode == 1 ? params.frameGeneration : 0);
+			Render3DSettings.setSupersampling(params.render3dQuality > 0 ? params.render3dQuality + 1 : 1);
 
 			Font.applySettings(params);
 
