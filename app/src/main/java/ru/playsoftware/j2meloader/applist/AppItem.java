@@ -78,8 +78,9 @@ public class AppItem {
 		return version;
 	}
 
+	/** The folder of the installed game files: {@code games/<game>/app}. */
 	public String getPathExt() {
-		return Config.getAppDir() + path;
+		return Config.getGamePaths().appDir(path).getPath();
 	}
 
 	public void setImagePathExt(String imagePath) {
@@ -93,7 +94,9 @@ public class AppItem {
 		if (imagePath == null) {
 			return null;
 		}
-		return Config.getAppDir() + imagePath;
+		// imagePath is "<game>/icon.png" (relative to the app folder after the game id)
+		String relative = imagePath.startsWith(path) ? imagePath.substring(path.length()) : "/" + imagePath;
+		return Config.getGamePaths().appDir(path).getPath() + relative;
 	}
 
 	public String getAuthorExt(Context context) {

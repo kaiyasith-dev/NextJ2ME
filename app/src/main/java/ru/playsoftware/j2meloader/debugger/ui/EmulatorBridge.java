@@ -32,6 +32,7 @@ import ru.playsoftware.j2meloader.BuildConfig;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.debugger.DebuggerStore;
 import ru.playsoftware.j2meloader.debugger.MemoryDebugger;
+import ru.playsoftware.j2meloader.util.GamePaths;
 import ru.playsoftware.j2meloader.debugger.RootSource;
 
 /**
@@ -56,11 +57,12 @@ public final class EmulatorBridge implements RootSource {
 	 * MIDlet is loaded, and only when the master switch is on.
 	 */
 	public static void install(MicroActivity activity, String appPath) {
-		String appId = new File(appPath).getName();
-		File dir = BuildConfig.FULL_EMULATOR
-				? new File(Config.getEmulatorDir(), "debugger")
-				: new File(activity.getFilesDir(), "debugger");
-		MemoryDebugger.install(new EmulatorBridge(), new DebuggerStore(new File(dir, appId + ".json"), appId));
+		// the app folder is <work>/games/<game>/app; the debugger keeps its data next to the game's saves
+		String appId = GamePaths.gameOf(new File(appPath));
+		File file = BuildConfig.FULL_EMULATOR
+				? new File(Config.getGamePaths().debuggerDir(appId), "memory.json")
+				: new File(new File(activity.getFilesDir(), "debugger"), appId + ".json");
+		MemoryDebugger.install(new EmulatorBridge(), new DebuggerStore(file, appId));
 	}
 
 	@Override

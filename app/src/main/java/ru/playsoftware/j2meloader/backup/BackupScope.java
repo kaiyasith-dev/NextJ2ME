@@ -20,23 +20,40 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-/** What goes into a backup. Folders are relative to the emulator work folder. */
+/**
+ * What goes into a backup. Paths are relative to the emulator work folder. Besides a few shared
+ * folders, every game has its own folder {@code games/<game>} with the subfolders {@code app}
+ * (the installed game, can be rebuilt), {@code saves}, {@code config} and {@code debugger}.
+ */
 public enum BackupScope {
 	/** Game saves, per-game settings, profiles and debugger data: small. */
-	SAVES("saves", "configs", "templates", "fs", "debugger"),
+	SAVES(new String[]{"templates", "fs"}, new String[]{"saves", "config", "debugger"}),
 	/** Everything above plus the installed games: can be large. */
-	ALL("saves", "configs", "templates", "fs", "debugger", "converted", "shaders");
+	ALL(new String[]{"templates", "fs", "shaders"}, new String[]{"app", "saves", "config", "debugger"});
 
-	private final String[] dirs;
+	/** The folder that holds the games. */
+	static final String GAMES = "games";
 
-	BackupScope(String... dirs) {
-		this.dirs = dirs;
+	/** Shared top-level folders a restore may write to, whatever scope the backup was made with. */
+	static final Set<String> RESTORABLE_SHARED = new HashSet<>(Arrays.asList(ALL.shared));
+	/** Subfolders of a game a restore may write to. */
+	static final Set<String> RESTORABLE_GAME_DIRS = new HashSet<>(Arrays.asList(ALL.perGame));
+
+	private final String[] shared;
+	private final String[] perGame;
+
+	BackupScope(String[] shared, String[] perGame) {
+		this.shared = shared;
+		this.perGame = perGame;
 	}
 
-	public String[] dirs() {
-		return dirs.clone();
+	/** Top-level folders outside {@code games} that are included. */
+	public String[] sharedDirs() {
+		return shared.clone();
 	}
 
-	/** Top-level folders a restore may write to, whatever scope the backup was made with. */
-	static final Set<String> RESTORABLE = new HashSet<>(Arrays.asList(ALL.dirs));
+	/** Subfolders of every game that are included. */
+	public String[] gameDirs() {
+		return perGame.clone();
+	}
 }

@@ -69,6 +69,7 @@ import ru.playsoftware.j2meloader.base.BaseActivity;
 import ru.playsoftware.j2meloader.databinding.ActivityConfigBinding;
 import ru.playsoftware.j2meloader.settings.KeyMapperActivity;
 import ru.playsoftware.j2meloader.util.FileUtils;
+import ru.playsoftware.j2meloader.util.GamePaths;
 import ru.playsoftware.j2meloader.util.SaveSlots;
 import yuku.ambilwarna.AmbilWarnaDialog;
 
@@ -84,7 +85,8 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 	protected ArrayList<String> fontPresetTitles = new ArrayList<>();
 
 	private File keylayoutFile;
-	private File dataDir;
+	/** The id of the game being set up (the name of its folder in "games"); null for a profile. */
+	private String gameId;
 	private ProfileModel params;
 	private FragmentManager fragmentManager;
 	private boolean isProfile;
@@ -118,10 +120,10 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			setTitle(path);
 		} else {
 			setTitle(intent.getStringExtra(KEY_MIDLET_NAME));
+			// the app folder is <work>/games/<game>/app
 			File appDir = new File(path);
-			File convertedDir = appDir.getParentFile();
-			if (!appDir.isDirectory() || convertedDir == null
-					|| (workDir = convertedDir.getParent()) == null) {
+			File work = GamePaths.workDirOf(appDir);
+			if (!appDir.isDirectory() || work == null) {
 				needShow = false;
 				String storageName = "";
 				if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -144,8 +146,9 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 						.show();
 				return;
 			}
-			dataDir = new File(workDir + Config.MIDLET_DATA_DIR + appDir.getName());
-			configDir = new File(workDir + Config.MIDLET_CONFIGS_DIR + appDir.getName());
+			workDir = work.getPath();
+			gameId = GamePaths.gameOf(appDir);
+			configDir = new GamePaths(work).configDir(gameId);
 		}
 		configDir.mkdirs();
 
@@ -771,7 +774,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 				.setPositiveButton(android.R.string.ok, (d, w) -> {
 					// the saves of the slot the game is set to use
 					SaveSlots slots = new SaveSlots(new File(workDir));
-					slots.clear(dataDir.getName(), slots.active(dataDir.getName()));
+					slots.clear(gameId, slots.active(gameId));
 				})
 				.setNegativeButton(android.R.string.cancel, null);
 		builder.show();

@@ -49,7 +49,7 @@ import ru.playsoftware.j2meloader.appsdb.AppRepository;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.util.ConverterException;
 import ru.playsoftware.j2meloader.util.FileUtils;
-import ru.playsoftware.j2meloader.util.SaveSlots;
+import ru.playsoftware.j2meloader.util.GamePaths;
 import ru.playsoftware.j2meloader.util.ZipUtils;
 import ru.woesss.j2me.jar.Descriptor;
 
@@ -135,7 +135,7 @@ public class AppInstaller {
 			srcJar = new File(currentApp.getPathExt(), Config.MIDLET_RES_FILE);
 			newDesc = new Descriptor(new File(currentApp.getPathExt(), Config.MIDLET_MANIFEST_FILE), false);
 			appDirName = currentApp.getPath();
-			targetDir = new File(Config.getAppDir(), appDirName);
+			targetDir = Config.getGamePaths().appDir(appDirName);
 			emitter.onSuccess(STATUS_EQUAL);
 			return;
 		}
@@ -355,22 +355,10 @@ public class AppInstaller {
 			app.setTitle(currentApp.getTitle());
 			String path = currentApp.getPath();
 			if (!path.equals(appDirName)) {
-				File rms = new File(Config.getDataDir(), path);
-				if (rms.exists()) {
-					File newRms = new File(Config.getDataDir(), appDirName);
-					FileUtils.deleteDirectory(newRms);
-					rms.renameTo(newRms);
+				// the game now has another folder name: its saves, settings and debugger data follow
+				if (!Config.getGamePaths().moveUserData(path, appDirName)) {
+					Log.w(TAG, "Can't move all the saves and settings of " + path + " to " + appDirName);
 				}
-				// the extra save slots and the chosen one go with the game's folder
-				new SaveSlots(new File(Config.getEmulatorDir())).moveAll(path, appDirName);
-				File config = new File(Config.getConfigsDir(), path);
-				if (config.exists()) {
-					File newConfig = new File(Config.getConfigsDir(), appDirName);
-					FileUtils.deleteDirectory(newConfig);
-					config.renameTo(newConfig);
-				}
-				File appDir = new File(Config.getAppDir(), path);
-				FileUtils.deleteDirectory(appDir);
 			}
 		}
 		currentApp = app;
@@ -425,18 +413,14 @@ public class AppInstaller {
 			return STATUS_NEW;
 		}
 		appDirName = currentApp.getPath();
-		targetDir = new File(Config.getAppDir(), appDirName);
+		targetDir = Config.getGamePaths().appDir(appDirName);
 		return Descriptor.compareVersions(version, currentApp.getVersion());
 	}
 
 	private void generatePathName(String name) {
-		String appsDir = Config.getAppDir();
-		File dir = new File(appsDir, name);
-		for (int i = 1; dir.exists(); i++) {
-			dir = new File(appsDir, name + "_" + i);
-		}
-		appDirName = dir.getName();
-		targetDir = dir;
+		GamePaths paths = Config.getGamePaths();
+		appDirName = paths.uniqueGameId(name);
+		targetDir = paths.appDir(appDirName);
 	}
 
 	private void downloadJar() throws ConverterException {
@@ -503,6 +487,12 @@ public class AppInstaller {
 	void deleteTemp() {
 		if (tmpDir != null) {
 			FileUtils.deleteDirectory(tmpDir);
+			// a game that was never installed leaves its (now empty) folder: drop it; a no-op otherwise
+			File gameDir = tmpDir.getParentFile();
+			if (gameDir != null) {
+				//noinspection ResultOfMethodCallIgnored
+				gameDir.delete();
+			}
 		}
 	}
 

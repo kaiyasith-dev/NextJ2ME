@@ -26,7 +26,6 @@ import androidx.annotation.NonNull;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.ListIterator;
 
@@ -38,19 +37,14 @@ import ru.woesss.j2me.jar.Descriptor;
 public class AppUtils {
 	private static final String TAG = AppUtils.class.getSimpleName();
 
-	private static ArrayList<AppItem> getAppsList(@NonNull List<String> appFolders) {
+	private static ArrayList<AppItem> getAppsList(@NonNull List<String> games) {
 		ArrayList<AppItem> apps = new ArrayList<>();
-		File appsDir = new File(Config.getAppDir());
-		for (String appFolderName : appFolders) {
-			File appFolder = new File(appsDir, appFolderName);
-			if (!appFolder.isDirectory()) {
-				if (!appFolder.delete()) {
-					Log.e(TAG, "getAppsList() failed delete file: " + appFolder);
-				}
-				continue;
-			}
+		GamePaths paths = Config.getGamePaths();
+		for (String game : games) {
+			File appFolder = paths.appDir(game);
 			File dex = new File(appFolder, Config.MIDLET_DEX_FILE);
 			if (!dex.isFile()) {
+				// a broken install: only the game's files go, its saves and settings stay
 				FileUtils.deleteDirectory(appFolder);
 				continue;
 			}
@@ -68,7 +62,7 @@ public class AppUtils {
 	private static AppItem getApp(File appDir) throws IOException {
 		File mf = new File(appDir, Config.MIDLET_MANIFEST_FILE);
 		Descriptor params = new Descriptor(mf, false);
-		AppItem item = new AppItem(appDir.getName(), params.getName(),
+		AppItem item = new AppItem(GamePaths.gameOf(appDir), params.getName(),
 				params.getVendor(),
 				params.getVersion());
 		File icon = new File(appDir, Config.MIDLET_ICON_FILE);
@@ -85,12 +79,9 @@ public class AppUtils {
 	}
 
 	public static AppItem findApp(String name, String vendor, String uid) throws IOException {
-		File appsDir = new File(Config.getAppDir());
-		for (String appFolderName : appsDir.list()) {
-			File appDir = new File(appsDir, appFolderName);
-			if (!appDir.isDirectory()) {
-				continue;
-			}
+		GamePaths paths = Config.getGamePaths();
+		for (String game : paths.installedGames()) {
+			File appDir = paths.appDir(game);
 			File dex = new File(appDir, Config.MIDLET_DEX_FILE);
 			if (!dex.isFile()) {
 				FileUtils.deleteDirectory(appDir);
@@ -103,7 +94,7 @@ public class AppUtils {
 						(name != null && params.getName().equalsIgnoreCase(name) &&
 						(vendor == null || params.getVendor().equalsIgnoreCase(vendor)))
 				) {
-					AppItem item = new AppItem(appDir.getName(), params.getName(),
+					AppItem item = new AppItem(game, params.getName(),
 							params.getVendor(),
 							params.getVersion());
 					return item;
@@ -119,9 +110,11 @@ public class AppUtils {
 		return new SaveSlots(new File(Config.getEmulatorDir()));
 	}
 
-	/** The folder that holds all the saves of the game, every slot included. */
-	public static File[] getAllSaveDirs(AppItem item) {
-		return new File[]{saveSlots().gameDir(item.getPath())};
+	/** The folders with the user's data of a game: its saves (every slot), settings and debugger data. */
+	public static File[] getUserDataDirs(AppItem item) {
+		GamePaths paths = Config.getGamePaths();
+		return new File[]{paths.savesDir(item.getPath()), paths.configDir(item.getPath()),
+				paths.debuggerDir(item.getPath())};
 	}
 
 	/** Size of the saves in the slot the game uses (the other slots are not counted). */
@@ -138,33 +131,25 @@ public class AppUtils {
 		return slots.isEmpty(item.getPath(), slot);
 	}
 
+	/** Deletes the game with everything that belongs to it: files, saves, settings. */
 	public static void deleteApp(AppItem item) {
-		File appDir = new File(item.getPathExt());
-		FileUtils.deleteDirectory(appDir);
-		File appSaveDir = new File(Config.getDataDir(), item.getPath()); // saves of earlier versions
-		FileUtils.deleteDirectory(appSaveDir);
-		saveSlots().deleteAll(item.getPath());
-		File appConfigsDir = new File(Config.getConfigsDir(), item.getPath());
-		FileUtils.deleteDirectory(appConfigsDir);
+		FileUtils.deleteDirectory(Config.getGamePaths().gameDir(item.getPath()));
 	}
 
 	public static void updateDb(AppRepository appRepository, List<AppItem> items) {
-		File tmp = new File(Config.getAppDir(), ".tmp");
-		if (tmp.exists()) {
-			// TODO: 30.07.2021 incomplete installation - maybe can continue?
-			FileUtils.deleteDirectory(tmp);
+		GamePaths paths = Config.getGamePaths();
+		for (String game : paths.allGameFolders()) {
+			paths.cleanUp(game);
 		}
-		// a reinstall that was cut short: put the old game back or drop the leftover
-		FileUtils.recoverReplaced(new File(Config.getAppDir()));
-		String[] appFolders = new File(Config.getAppDir()).list();
-		if (appFolders == null || appFolders.length == 0) {
+		List<String> installed = paths.installedGames();
+		if (installed.isEmpty()) {
 			// If db isn't empty
 			if (items.size() != 0) {
 				appRepository.deleteAll();
 			}
 			return;
 		}
-		List<String> appFoldersList = new ArrayList<>(Arrays.asList(appFolders));
+		List<String> appFoldersList = new ArrayList<>(installed);
 		// Delete invalid app items from db
 		ListIterator<AppItem> iterator = items.listIterator(items.size());
 		while (iterator.hasPrevious()) {

@@ -39,7 +39,7 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 public class BackupRoundTripTest {
-	private static final int VERSION = 4;
+	private static final int VERSION = 5;
 
 	@Rule
 	public TemporaryFolder tmp = new TemporaryFolder();
@@ -49,14 +49,14 @@ public class BackupRoundTripTest {
 	@Before
 	public void setUp() throws IOException {
 		root = tmp.newFolder("emulator");
-		put("saves/Game/rms/1.rms", "save one");
-		put("saves/Game/rms/2.rms", "save two");
-		put("configs/Game/config.json", "{\"x\":1}");
+		put("games/Game/saves/rms/1.rms", "save one");
+		put("games/Game/saves/rms/2.rms", "save two");
+		put("games/Game/config/config.json", "{\"x\":1}");
 		put("templates/default/config.json", "{}");
 		put("fs/e/photo.jpg", "jpeg");
-		put("debugger/Game.json", "{}");
-		put("converted/Game/converted.dex", "dex bytes");
-		put("converted/.tmp/half", "unfinished install");
+		put("games/Game/debugger/memory.json", "{}");
+		put("games/Game/app/converted.dex", "dex bytes");
+		put("games/Game/.tmp/half", "unfinished install");
 		put("shaders/custom.glsl", "void main(){}");
 		put("cache/junk.bin", "cache");
 		put("J2ME-apps.db", "sqlite");
@@ -108,21 +108,21 @@ public class BackupRoundTripTest {
 	public void savesScopeHoldsSavesAndSettingsOnly() throws IOException {
 		List<String> names = entries(backup(BackupScope.SAVES));
 		assertEquals(BackupWriter.INFO_ENTRY, names.get(0));
-		assertTrue(names.contains("saves/Game/rms/1.rms"));
-		assertTrue(names.contains("configs/Game/config.json"));
+		assertTrue(names.contains("games/Game/saves/rms/1.rms"));
+		assertTrue(names.contains("games/Game/config/config.json"));
 		assertTrue(names.contains("templates/default/config.json"));
 		assertTrue(names.contains("fs/e/photo.jpg"));
-		assertTrue(names.contains("debugger/Game.json"));
-		assertFalse("games are not in a saves backup", names.contains("converted/Game/converted.dex"));
+		assertTrue(names.contains("games/Game/debugger/memory.json"));
+		assertFalse("games are not in a saves backup", names.contains("games/Game/app/converted.dex"));
 		assertFalse(names.contains("shaders/custom.glsl"));
 	}
 
 	@Test
 	public void allScopeAddsGamesButNeverCacheDatabaseOrUnfinishedInstalls() throws IOException {
 		List<String> names = entries(backup(BackupScope.ALL));
-		assertTrue(names.contains("converted/Game/converted.dex"));
+		assertTrue(names.contains("games/Game/app/converted.dex"));
 		assertTrue(names.contains("shaders/custom.glsl"));
-		assertTrue(names.contains("saves/Game/rms/1.rms"));
+		assertTrue(names.contains("games/Game/saves/rms/1.rms"));
 		for (String n : names) {
 			assertFalse(n, n.startsWith("cache/"));
 			assertFalse(n, n.startsWith("converted/.tmp"));
@@ -141,36 +141,36 @@ public class BackupRoundTripTest {
 		assertEquals(8, r.files);
 		assertEquals(0, r.skipped);
 		assertEquals(r.files, progress.files());
-		assertEquals("save one", read(new File(target, "saves/Game/rms/1.rms")));
-		assertEquals("dex bytes", read(new File(target, "converted/Game/converted.dex")));
+		assertEquals("save one", read(new File(target, "games/Game/saves/rms/1.rms")));
+		assertEquals("dex bytes", read(new File(target, "games/Game/app/converted.dex")));
 		assertEquals(BackupScope.ALL, r.info.scope());
 		assertEquals(1234L, r.info.created());
 
 		// a changed file in the target is replaced, and no temp files are left
-		put("saves/Game/rms/1.rms", "newer progress");
-		File again = new File(target, "saves/Game/rms/1.rms");
+		put("games/Game/saves/rms/1.rms", "newer progress");
+		File again = new File(target, "games/Game/saves/rms/1.rms");
 		try (FileOutputStream out = new FileOutputStream(again)) {
 			out.write("local edit".getBytes("UTF-8"));
 		}
 		BackupReader.restore(new ByteArrayInputStream(zip), target, VERSION, new BackupProgress());
 		assertEquals("save one", read(again));
-		for (String n : new File(target, "saves/Game/rms").list()) {
+		for (String n : new File(target, "games/Game/saves/rms").list()) {
 			assertFalse(n, n.endsWith(".restore-tmp"));
 		}
 	}
 
 	@Test
 	public void saveSlotsAndTheChosenSlotAreBackedUpAndRestored() throws IOException {
-		put("saves/Game/slots/Alice/score", "slot data");
-		put("saves/Game/.active", "Alice");
+		put("games/Game/saves/slots/Alice/score", "slot data");
+		put("games/Game/saves/.active", "Alice");
 		byte[] zip = backup(BackupScope.SAVES);
 		List<String> names = entries(zip);
-		assertTrue(names.contains("saves/Game/slots/Alice/score"));
-		assertTrue(names.contains("saves/Game/.active"));
+		assertTrue(names.contains("games/Game/saves/slots/Alice/score"));
+		assertTrue(names.contains("games/Game/saves/.active"));
 		File target = tmp.newFolder("slotsTarget");
 		BackupReader.restore(new ByteArrayInputStream(zip), target, VERSION, new BackupProgress());
-		assertEquals("slot data", read(new File(target, "saves/Game/slots/Alice/score")));
-		assertEquals("Alice", read(new File(target, "saves/Game/.active")));
+		assertEquals("slot data", read(new File(target, "games/Game/saves/slots/Alice/score")));
+		assertEquals("Alice", read(new File(target, "games/Game/saves/.active")));
 	}
 
 	@Test
@@ -211,7 +211,7 @@ public class BackupRoundTripTest {
 		byte[][] notBackups = {
 				new byte[0],
 				"just some text".getBytes("UTF-8"),
-				zipOf(new String[]{"saves/Game/rms/1.rms"}),
+				zipOf(new String[]{"games/Game/saves/rms/1.rms"}),
 				zipOf(new String[]{BackupWriter.INFO_ENTRY}),   // "x" is not valid info JSON
 		};
 		for (byte[] bytes : notBackups) {
@@ -271,12 +271,12 @@ public class BackupRoundTripTest {
 	@Test
 	public void aFolderInTheWayIsReportedNotOverwritten() throws IOException {
 		File target = tmp.newFolder("clash");
-		assertTrue(new File(target, "saves/Game").mkdirs());
+		assertTrue(new File(target, "games/Game/saves").mkdirs());
 		try {
-			BackupReader.restore(new ByteArrayInputStream(withEntry("saves/Game")), target, VERSION, new BackupProgress());
+			BackupReader.restore(new ByteArrayInputStream(withEntry("games/Game/saves")), target, VERSION, new BackupProgress());
 			fail("expected BackupException");
 		} catch (BackupException expected) {
-			assertTrue(new File(target, "saves/Game").isDirectory());
+			assertTrue(new File(target, "games/Game/saves").isDirectory());
 		}
 	}
 
@@ -309,5 +309,69 @@ public class BackupRoundTripTest {
 		File target = tmp.newFolder("emptyTarget");
 		BackupReader.Result r = BackupReader.restore(new ByteArrayInputStream(zip), target, VERSION, new BackupProgress());
 		assertEquals(0, r.files);
+	}
+
+	@Test
+	public void everyGamesFoldersAreIncludedAndOnlyTheKnownParts() throws IOException {
+		put("games/Other/saves/rms/1.rms", "other save");
+		put("games/Other/config/config.json", "{}");
+		put("games/Other/app/converted.dex", "other dex");
+		put("games/Other/notes.txt", "not part of any backup");
+		put("games/Game/evil/x", "unknown folder of a game");
+		List<String> saves = entries(backup(BackupScope.SAVES));
+		assertTrue(saves.contains("games/Game/saves/rms/1.rms"));
+		assertTrue(saves.contains("games/Other/saves/rms/1.rms"));
+		assertTrue(saves.contains("games/Other/config/config.json"));
+		assertFalse(saves.contains("games/Other/app/converted.dex"));
+		List<String> all = entries(backup(BackupScope.ALL));
+		assertTrue(all.contains("games/Other/app/converted.dex"));
+		for (String n : all) {
+			assertFalse(n, n.contains("notes.txt"));
+			assertFalse(n, n.startsWith("games/Game/evil"));
+		}
+	}
+
+	@Test
+	public void unfinishedAndLeftoverFoldersOfGamesNeverGoIntoABackup() throws IOException {
+		put("games/Game/.old-app/converted.dex", "left over from a cut short reinstall");
+		put("games/Game/app/.tmp/x", "unfinished");
+		put("games/.tmp/y", "the temporary folder of an install");
+		put("games/.hidden/saves/z", "a hidden game folder");
+		for (BackupScope scope : BackupScope.values()) {
+			for (String n : entries(backup(scope))) {
+				assertFalse(n, n.contains(".old-app"));
+				assertFalse(n, n.contains("/.tmp/") || n.startsWith("games/.tmp"));
+				assertFalse(n, n.startsWith("games/.hidden"));
+			}
+		}
+	}
+
+	@Test
+	public void aRestoreOnlyWritesTheKnownPartsOfAGame() throws IOException {
+		for (String name : new String[]{"games/Game/evil/x", "games/Game", "games/.hidden/saves/x",
+				"games/Game/notes.txt", "games"}) {
+			File target = tmp.newFolder();
+			BackupReader.Result r = BackupReader.restore(
+					new ByteArrayInputStream(withEntry(name)), target, VERSION, new BackupProgress());
+			assertEquals(name, 0, r.files);
+			assertEquals(name, 1, r.skipped);
+			assertEquals(name, 0, target.list().length);
+		}
+		File target = tmp.newFolder();
+		BackupReader.Result r = BackupReader.restore(
+				new ByteArrayInputStream(withEntry("games/Game/config/config.json")), target, VERSION, new BackupProgress());
+		assertEquals(1, r.files);
+		assertEquals("evil", read(new File(target, "games/Game/config/config.json")));
+	}
+
+	@Test
+	public void aBackupOfTheOldLayoutIsRefusedAsAnotherDataVersion() throws IOException {
+		byte[] zip = backup(BackupScope.SAVES);
+		try {
+			BackupReader.restore(new ByteArrayInputStream(zip), tmp.newFolder(), VERSION - 1, new BackupProgress());
+			fail("expected BackupException");
+		} catch (BackupException expected) {
+			assertTrue(expected.getMessage().contains("different data layout"));
+		}
 	}
 }

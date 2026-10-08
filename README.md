@@ -27,9 +27,23 @@ Turn it on in **Settings → Developer / Debugging** (off by default). Then open
 - **Per-game persistence:** watches, frozen values and scan settings are saved separately for each game.
 - **Memory safety:** scans are capped, history is trimmed when memory runs low and the user is told when results are dropped, so the debugger does not take the game down.
 
+### One folder per game
+
+Everything that belongs to a game is in one folder of the work folder, split by how precious it is:
+
+```
+games/<game>/
+    app/        the installed game: converted.dex, res.jar, icon (can be rebuilt)
+    saves/      the game's saves: the default slot, and slots/<name>
+    config/     the game's settings and key layout
+    debugger/   the memory debugger's data for the game
+```
+
+Deleting a game removes this one folder. Reinstalling replaces only `app/`, so saves and settings are never touched. Backups pick the parts they need from every game. Profiles (`templates/`), the shared file system (`fs/`), `shaders/` and `cache/` stay at the top level.
+
 ### Save slots
 
-Each game can keep several named save slots, for example one per player or one before a hard level. Long-press a game and choose **Save slots**: the slot marked ● is the one the game uses, and you can make a new slot (empty or a copy of the current saves), switch slots, duplicate, rename and delete them. The game picks its slot when it starts, so nothing is copied when you switch, and nothing can be changed while the game is open. The saves of a game live in `saves/<game>/`: the "Default" slot is that folder itself, and the slots you make are in its `slots` subfolder. Slots are included in backups, and "Clear data" clears only the slot in use.
+Each game can keep several named save slots, for example one per player or one before a hard level. Long-press a game and choose **Save slots**: the slot marked ● is the one the game uses, and you can make a new slot (empty or a copy of the current saves), switch slots, duplicate, rename and delete them. The game picks its slot when it starts, so nothing is copied when you switch, and nothing can be changed while the game is open. The saves of a game live in `games/<game>/saves/`: the "Default" slot is that folder itself, and the slots you make are in its `slots` subfolder. Slots are included in backups, and "Clear data" clears only the slot in use.
 
 ### Backup and restore
 

@@ -35,9 +35,9 @@ import java.util.Set;
  * <p>
  * A game keeps its saves (record stores and private files) in one folder, and a slot is such a
  * folder. The <em>default</em> slot is the game's saves folder itself,
- * {@code <work folder>/saves/<game>}; the slots the user made are in its {@code slots} subfolder,
- * {@code saves/<game>/slots/<name>}. The slot the game uses is written to
- * {@code saves/<game>/.active}. The game process reads it when it starts and uses that slot's
+ * {@code <work folder>/games/<game>/saves}; the slots the user made are in its {@code slots} subfolder,
+ * {@code games/<game>/saves/slots/<name>}. The slot the game uses is written to
+ * {@code games/<game>/saves/.active}. The game process reads it when it starts and uses that slot's
  * folder for everything it saves, so switching slots needs no copying.
  * <p>
  * Plain {@code java.io}: the emulator process and the main app both use it.
@@ -46,7 +46,6 @@ public final class SaveSlots {
 	/** Name of the default slot (the saves folder itself). Shown to the user in their language. */
 	public static final String DEFAULT = "";
 
-	private static final String SAVES = "saves";
 	private static final String SLOTS = "slots";
 	private static final String ACTIVE_FILE = ".active";
 	/** In the saves folder of a game, what belongs to the slots and not to the default slot's saves. */
@@ -55,29 +54,29 @@ public final class SaveSlots {
 	private static final int MAX_NAME_LENGTH = 40;
 	private static final int BUFFER_SIZE = 32 * 1024;
 
-	private final File workDir;
+	private final GamePaths paths;
 
-	/** @param workDir the emulator work folder (the one that holds {@code saves}, {@code converted}...) */
+	/** @param workDir the emulator work folder (the one that holds {@code games}, {@code templates}...) */
 	public SaveSlots(File workDir) {
-		this.workDir = workDir;
+		this.paths = new GamePaths(workDir);
 	}
 
 	// ------------------------------------------------------------------ folders
 
 	/** All the saves of a game: the default slot's files, the {@code slots} folder and the choice. */
-	public File gameDir(String game) {
-		return new File(new File(workDir, SAVES), game);
+	public File savesDir(String game) {
+		return paths.savesDir(game);
 	}
 
 	/** The folder that holds the slots the user made. */
 	public File slotsDir(String game) {
-		return new File(gameDir(game), SLOTS);
+		return new File(savesDir(game), SLOTS);
 	}
 
 	/** The folder of a slot; {@link #DEFAULT} (or null) is the default slot, the game's saves folder. */
 	public File dir(String game, String slot) {
 		if (slot == null || slot.isEmpty()) {
-			return gameDir(game);
+			return savesDir(game);
 		}
 		return new File(slotsDir(game), slot);
 	}
@@ -112,7 +111,7 @@ public final class SaveSlots {
 
 	/** The slot the game uses; {@link #DEFAULT} if none was chosen or the chosen one is gone. */
 	public String active(String game) {
-		File file = new File(gameDir(game), ACTIVE_FILE);
+		File file = new File(savesDir(game), ACTIVE_FILE);
 		if (!file.isFile()) {
 			return DEFAULT;
 		}
@@ -132,7 +131,7 @@ public final class SaveSlots {
 
 	/** Makes {@code slot} the one the game uses from its next start. */
 	public void setActive(String game, String slot) throws IOException {
-		File root = gameDir(game);
+		File root = savesDir(game);
 		File file = new File(root, ACTIVE_FILE);
 		if (slot == null || slot.isEmpty()) {
 			if (file.exists() && !file.delete()) {
@@ -181,7 +180,7 @@ public final class SaveSlots {
 		boolean fromDefault = from == null || from.isEmpty();
 		// copied under a temporary name first, so a half-finished copy never looks like a slot
 		File tmp = new File(root, "." + n + ".tmp");
-		deleteTree(tmp);
+		FileUtils.deleteDirectory(tmp);
 		try {
 			if (src.isDirectory()) {
 				// the default slot is the saves folder itself: its slots and the choice are not part of it
@@ -193,7 +192,7 @@ public final class SaveSlots {
 				throw new IOException("Can't create slot \"" + n + "\"");
 			}
 		} catch (IOException e) {
-			deleteTree(tmp);
+			FileUtils.deleteDirectory(tmp);
 			throw e;
 		}
 		return n;
@@ -241,7 +240,7 @@ public final class SaveSlots {
 			setActive(game, DEFAULT);
 		}
 		File dir = dir(game, slot);
-		deleteTree(dir);
+		FileUtils.deleteDirectory(dir);
 		if (dir.exists()) {
 			throw new IOException("Can't delete \"" + slot + "\" completely");
 		}
@@ -259,7 +258,7 @@ public final class SaveSlots {
 		}
 		for (File c : children) {
 			if (!isDefault || !NOT_DEFAULT_SAVES.contains(c.getName())) {
-				deleteTree(c);
+				FileUtils.deleteDirectory(c);
 			}
 		}
 	}
@@ -285,28 +284,6 @@ public final class SaveSlots {
 	public long size(String game, String slot) {
 		boolean isDefault = slot == null || slot.isEmpty();
 		return sizeOf(dir(game, slot), isDefault ? NOT_DEFAULT_SAVES : Collections.<String>emptySet());
-	}
-
-	/** Deletes all the saves of a game, every slot included (when the game is deleted). */
-	public void deleteAll(String game) {
-		deleteTree(gameDir(game));
-	}
-
-	/** Moves all the saves of a game, every slot included, to the folder name it now has. */
-	public void moveAll(String game, String newGame) {
-		File from = gameDir(game);
-		if (!from.isDirectory() || game.equals(newGame)) {
-			return;
-		}
-		File to = gameDir(newGame);
-		deleteTree(to);
-		File parent = to.getParentFile();
-		if (parent != null) {
-			//noinspection ResultOfMethodCallIgnored
-			parent.mkdirs();
-		}
-		//noinspection ResultOfMethodCallIgnored
-		from.renameTo(to);
 	}
 
 	// ------------------------------------------------------------------ names
@@ -371,19 +348,6 @@ public final class SaveSlots {
 		return f.isFile() ? f.length() : 0;
 	}
 
-	private static void deleteTree(File f) {
-		if (f.isDirectory()) {
-			File[] children = f.listFiles();
-			if (children != null) {
-				for (File c : children) {
-					deleteTree(c);
-				}
-			}
-		}
-		//noinspection ResultOfMethodCallIgnored
-		f.delete();
-	}
-
 	/** Copies {@code src} to {@code dst}; entries of the top folder named in {@code skip} are left out. */
 	private static void copyTree(File src, File dst, Set<String> skip) throws IOException {
 		if (src.isDirectory()) {
@@ -420,6 +384,6 @@ public final class SaveSlots {
 
 	@Override
 	public String toString() {
-		return "SaveSlots(" + workDir + ")";
+		return "SaveSlots(" + paths.gamesDir() + ")";
 	}
 }

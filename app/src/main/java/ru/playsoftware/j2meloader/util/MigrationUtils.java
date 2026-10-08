@@ -39,44 +39,7 @@ public class MigrationUtils {
 	private static final int VERSION_1 = 1;
 	private static final int VERSION_2 = 2;
 	private static final int VERSION_3 = 3;
-	private static final int VERSION = 4;
-
-	private static void moveConfigs(Context context) {
-		File srcConfDir = new File(context.getApplicationInfo().dataDir, "/shared_prefs");
-		for (File srcConf : srcConfDir.listFiles()) {
-			String fileName = srcConf.getName().replace(".xml", "");
-			if (fileName.equals("ru.playsoftware.j2meloader_preferences")) {
-				continue;
-			}
-			File dstConf = new File(Config.getConfigsDir(), fileName + Config.MIDLET_CONFIG_FILE);
-			dstConf.getParentFile().mkdirs();
-			try {
-				FileUtils.copyFileUsingChannel(srcConf, dstConf);
-				srcConf.delete();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		File srcDataDir = new File(Config.getDataDir());
-		if (!srcDataDir.exists()) {
-			return;
-		}
-		for (File srcData : srcDataDir.listFiles()) {
-			File srcKeylayout = new File(srcData, Config.MIDLET_KEY_LAYOUT_FILE);
-			if (!srcKeylayout.exists()) {
-				continue;
-			}
-			File dstKeylayout = new File(Config.getConfigsDir(),
-					srcData.getName() + Config.MIDLET_KEY_LAYOUT_FILE);
-			dstKeylayout.getParentFile().mkdirs();
-			try {
-				FileUtils.copyFileUsingChannel(srcKeylayout, dstKeylayout);
-				srcKeylayout.delete();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-	}
+	private static final int VERSION = 5;
 
 	private static boolean moveKeyMappings(Context context) {
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
@@ -159,7 +122,6 @@ public class MigrationUtils {
 		}
 		switch (version) {
 			case 0:
-				moveConfigs(context);
 			case VERSION_1:
 			case VERSION_2:
 			case VERSION_3:

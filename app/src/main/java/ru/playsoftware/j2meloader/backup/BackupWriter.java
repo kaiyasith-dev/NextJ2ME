@@ -53,8 +53,23 @@ public final class BackupWriter {
 		zip.write(json);
 		zip.closeEntry();
 		byte[] buf = new byte[BUFFER_SIZE];
-		for (String dir : scope.dirs()) {
+		for (String dir : scope.sharedDirs()) {
 			addTree(zip, new File(root, dir), dir, buf, progress, 0);
+		}
+		// every game has its own folder; only the parts the scope asks for are included
+		File games = new File(root, BackupScope.GAMES);
+		String[] gameNames = games.list();
+		if (gameNames != null) {
+			Arrays.sort(gameNames);
+			for (String game : gameNames) {
+				if (game.startsWith(".") || !new File(games, game).isDirectory()) {
+					continue; // the temporary folder of an install
+				}
+				for (String sub : scope.gameDirs()) {
+					addTree(zip, new File(new File(games, game), sub),
+							BackupScope.GAMES + "/" + game + "/" + sub, buf, progress, 0);
+				}
+			}
 		}
 		zip.finish();
 		zip.flush();

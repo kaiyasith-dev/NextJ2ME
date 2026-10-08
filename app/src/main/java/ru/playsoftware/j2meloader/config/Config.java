@@ -37,13 +37,12 @@ import ru.playsoftware.j2meloader.R;
 import static ru.playsoftware.j2meloader.util.Constants.*;
 
 import ru.playsoftware.j2meloader.util.FileUtils;
+import ru.playsoftware.j2meloader.util.GamePaths;
 
 public class Config {
 	public static final String DEX_OPT_CACHE_DIR = "dex_opt";
 	public static final String FS_DIR = "/fs/";
 	public static final String MIDLET_CONFIG_FILE = "/config.json";
-	public static final String MIDLET_CONFIGS_DIR = "/configs/";
-	public static final String MIDLET_DATA_DIR = "/data/";
 	public static final String MIDLET_DEX_FILE = "/converted.dex";
 	public static final String MIDLET_ICON_FILE = "/icon.png";
 	public static final String MIDLET_KEY_LAYOUT_FILE = "/VirtualKeyboardLayout";
@@ -54,10 +53,8 @@ public class Config {
 	public static final String SHADERS_DIR = "/shaders/";
 
 	private static String emulatorDir;
-	private static String dataDir;
-	private static String configsDir;
 	private static String profilesDir;
-	private static String appDir;
+	private static GamePaths gamePaths;
 
 	private static final SharedPreferences.OnSharedPreferenceChangeListener sPrefListener =
 			(sharedPreferences, key) -> {
@@ -89,20 +86,13 @@ public class Config {
 		return emulatorDir;
 	}
 
-	public static String getDataDir() {
-		return dataDir;
-	}
-
-	public static String getConfigsDir() {
-		return configsDir;
-	}
-
 	public static String getProfilesDir() {
 		return profilesDir;
 	}
 
-	public static String getAppDir() {
-		return appDir;
+	/** Where the files of each game are (see {@link GamePaths}). */
+	public static GamePaths getGamePaths() {
+		return gamePaths;
 	}
 
 	public static String getShadersDir() {
@@ -127,9 +117,10 @@ public class Config {
 
 	public static void startApp(Context context, String name, String path, boolean showSettings, String arguments) {
 		File appDir = new File(path);
-		String workDir = appDir.getParentFile().getParent();
-		File file = new File(workDir + Config.MIDLET_CONFIGS_DIR + appDir.getName());
-		if (showSettings || !file.exists()) {
+		File workDir = GamePaths.workDirOf(appDir);
+		// a game that was never set up has no settings folder yet
+		File file = workDir == null ? null : new GamePaths(workDir).configDir(GamePaths.gameOf(appDir));
+		if (showSettings || file == null || !file.exists()) {
 			Intent intent = new Intent(ACTION_EDIT, Uri.parse(path),
 					context, ConfigActivity.class);
 			intent.putExtra(KEY_MIDLET_NAME, name);
@@ -146,9 +137,7 @@ public class Config {
 
 	private static void initDirs(String path) {
 		emulatorDir = path;
-		dataDir = emulatorDir + MIDLET_DATA_DIR;
-		configsDir = emulatorDir + MIDLET_CONFIGS_DIR;
 		profilesDir = emulatorDir + "/templates/";
-		appDir = emulatorDir + "/converted/";
+		gamePaths = new GamePaths(new File(path));
 	}
 }

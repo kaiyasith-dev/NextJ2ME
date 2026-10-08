@@ -143,7 +143,8 @@ public class MicroActivity extends AppCompatActivity {
 			appPath = data.toString();
 		} else {
 			appName = getTitle().toString();
-			appPath = getApplicationInfo().dataDir + "/files/converted/midlet";
+			// same layout as the full emulator: <work>/games/<game>/app
+			appPath = getApplicationInfo().dataDir + "/files/games/midlet/app";
 			File dir = new File(appPath);
 			if (!dir.exists() && !dir.mkdirs()) {
 				throw new RuntimeException("Can't access file system");

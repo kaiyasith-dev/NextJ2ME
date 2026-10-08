@@ -72,6 +72,7 @@ import ru.playsoftware.j2meloader.config.ProfilesManager;
 import ru.playsoftware.j2meloader.config.ShaderInfo;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.FileUtils;
+import ru.playsoftware.j2meloader.util.GamePaths;
 import ru.playsoftware.j2meloader.util.IOUtils;
 import ru.playsoftware.j2meloader.util.SaveSlots;
 import ru.woesss.j2me.jar.Descriptor;
@@ -88,15 +89,16 @@ public class MicroLoader {
 	MicroLoader(Context context, String appPath) {
 		this.context = context;
 		this.appDir = new File(appPath);
-		File converted = appDir.getParentFile();
-		if (converted == null)
-			throw new NullPointerException("Can't access to parent of " + appPath);
-		workDir = converted.getParent();
-		appDirName = appDir.getName();
+		// the app folder is <work>/games/<game>/app
+		File work = GamePaths.workDirOf(appDir);
+		if (work == null)
+			throw new NullPointerException("Can't access to the work folder of " + appPath);
+		workDir = work.getPath();
+		appDirName = GamePaths.gameOf(appDir);
 	}
 
 	public boolean init() {
-		File config = new File(workDir + Config.MIDLET_CONFIGS_DIR + appDirName);
+		File config = new GamePaths(new File(workDir)).configDir(appDirName);
 		this.params = ProfilesManager.loadConfig(config);
 		if (params == null) {
 			return false;
@@ -217,7 +219,8 @@ public class MicroLoader {
 				+ (country.length() == 2 ? "-" + country : ""));
 		// FIXME: 21.10.2020 Config.getDataDir() may be in different storage
 		final String primaryStoragePath = Environment.getExternalStorageDirectory().getPath();
-		String savePath = new SaveSlots(new File(Config.getEmulatorDir())).activeDir(appDirName).getPath();
+		// the same work folder as the record stores use (see AppClassLoader.setDataDir)
+		String savePath = new SaveSlots(new File(workDir)).activeDir(appDirName).getPath();
 		String dataUri = "file:///c:" + savePath.substring(primaryStoragePath.length());
 		String musicUri = "file:///c:" + Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
 				.getPath().substring(primaryStoragePath.length());

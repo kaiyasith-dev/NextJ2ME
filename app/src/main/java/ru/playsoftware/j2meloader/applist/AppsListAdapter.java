@@ -50,6 +50,7 @@ import ru.playsoftware.j2meloader.config.ScreenInfoCache;
 import ru.playsoftware.j2meloader.databinding.ListRowJarBinding;
 import ru.playsoftware.j2meloader.util.AppSizeCache;
 import ru.playsoftware.j2meloader.util.AppUtils;
+import ru.playsoftware.j2meloader.util.GamePaths;
 import ru.playsoftware.j2meloader.util.StorageSize;
 
 import static ru.playsoftware.j2meloader.util.Constants.PREF_DEFAULT_PROFILE;
@@ -156,7 +157,7 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 				.getString(PREF_DEFAULT_PROFILE, null);
 		final File defaultConfig = defaultProfile == null ? null : new File(
 				new File(Config.getProfilesDir(), defaultProfile), Config.MIDLET_CONFIG_FILE);
-		final String configsDir = Config.getConfigsDir();
+		final GamePaths gamePaths = Config.getGamePaths();
 		try {
 			sizeExecutor.execute(() -> {
 				Map<String, Long> measured = new HashMap<>();
@@ -168,9 +169,9 @@ public class AppsListAdapter extends BaseAdapter implements Filterable {
 					}
 					paths.add(item.getPath());
 					measured.put(item.getPath(), sizeCache.totalSize(item.getPath(),
-							new File(item.getPathExt()), AppUtils.getAllSaveDirs(item)));
+							new File(item.getPathExt()), AppUtils.getUserDataDirs(item)));
 					ScreenInfo screen = screenCache.get(item.getPath(),
-							new File(new File(configsDir, item.getPath()), Config.MIDLET_CONFIG_FILE),
+							new File(gamePaths.configDir(item.getPath()), Config.MIDLET_CONFIG_FILE),
 							defaultConfig);
 					if (screen != null) {
 						measuredScreens.put(item.getPath(), screen);

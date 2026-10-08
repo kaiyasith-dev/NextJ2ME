@@ -72,23 +72,23 @@ public class SaveSlotsTest {
 
 	@Test
 	public void theDefaultSlotIsTheGamesSavesFolderItself() {
-		assertEquals(new File(work, "saves/Snake"), slots.dir(GAME, SaveSlots.DEFAULT));
-		assertEquals(new File(work, "saves/Snake"), slots.dir(GAME, null));
-		assertEquals(unix(work) + "/saves/" + GAME, unix(slots.activeDir(GAME)));
-		assertEquals(slots.gameDir(GAME), slots.activeDir(GAME));
+		assertEquals(new File(work, "games/Snake/saves"), slots.dir(GAME, SaveSlots.DEFAULT));
+		assertEquals(new File(work, "games/Snake/saves"), slots.dir(GAME, null));
+		assertEquals(unix(work) + "/games/" + GAME + "/saves", unix(slots.activeDir(GAME)));
+		assertEquals(slots.savesDir(GAME), slots.activeDir(GAME));
 	}
 
 	@Test
 	public void theOtherSlotsAreInASlotsFolderInsideIt() {
-		assertEquals(new File(work, "saves/Snake/slots/Level 5"), slots.dir(GAME, "Level 5"));
-		assertEquals(new File(work, "saves/Snake/slots"), slots.slotsDir(GAME));
+		assertEquals(new File(work, "games/Snake/saves/slots/Level 5"), slots.dir(GAME, "Level 5"));
+		assertEquals(new File(work, "games/Snake/saves/slots"), slots.slotsDir(GAME));
 	}
 
 	@Test
 	public void aGameWithoutSlotsUsesTheDefaultAndNothingIsCreated() {
 		assertEquals(SaveSlots.DEFAULT, slots.active(GAME));
 		assertTrue(slots.list(GAME).isEmpty());
-		assertFalse("asking does not create folders", new File(work, "saves").exists());
+		assertFalse("asking does not create folders", new File(work, "games").exists());
 	}
 
 	// ------------------------------------------------------------ making and choosing slots
@@ -112,9 +112,9 @@ public class SaveSlotsTest {
 	@Test
 	public void theGamesOwnFoldersAreNeverListedAsSlots() throws IOException {
 		// a game saves files and folders of its own next to the slots folder
-		write(new File(work, "saves/Snake/score-h.db"), "1");
-		write(new File(work, "saves/Snake/private/save.bin"), "2");
-		write(new File(work, "saves/Snake/cache/tmp"), "3");
+		write(new File(work, "games/Snake/saves/score-h.db"), "1");
+		write(new File(work, "games/Snake/saves/private/save.bin"), "2");
+		write(new File(work, "games/Snake/saves/cache/tmp"), "3");
 		assertTrue(slots.list(GAME).isEmpty());
 		slots.create(GAME, "A");
 		assertEquals(Collections.singletonList("A"), slots.list(GAME));
@@ -162,7 +162,7 @@ public class SaveSlotsTest {
 	@Test
 	public void aDamagedActiveFileMeansTheDefault() throws IOException {
 		slots.create(GAME, "Alice");
-		File active = new File(work, "saves/Snake/.active");
+		File active = new File(work, "games/Snake/saves/.active");
 		write(active, "../../data/Other");
 		assertEquals(SaveSlots.DEFAULT, slots.active(GAME));
 		write(active, "");
@@ -187,7 +187,7 @@ public class SaveSlotsTest {
 		String stored = slots.create(GAME, "../../data/Other");
 		assertFalse(stored.contains("/"));
 		assertTrue(slots.dir(GAME, stored).getCanonicalPath().startsWith(
-				new File(work, "saves/Snake/slots").getCanonicalPath()));
+				new File(work, "games/Snake/saves/slots").getCanonicalPath()));
 		assertFalse(new File(work, "data/Other").exists());
 	}
 
@@ -220,8 +220,8 @@ public class SaveSlotsTest {
 
 	@Test
 	public void duplicatingTheDefaultCopiesItsSavesButNotTheSlotsFolderOrTheChoice() throws IOException {
-		write(new File(work, "saves/Snake/score-h.db"), "header");
-		write(new File(work, "saves/Snake/private/save.bin"), "deep");
+		write(new File(work, "games/Snake/saves/score-h.db"), "header");
+		write(new File(work, "games/Snake/saves/private/save.bin"), "deep");
 		slots.create(GAME, "Other");
 		write(new File(slots.dir(GAME, "Other"), "o"), "other slot");
 		slots.setActive(GAME, "Other");
@@ -233,7 +233,7 @@ public class SaveSlotsTest {
 		assertEquals("deep", read(new File(copy, "private/save.bin")));
 		assertFalse("the copy has no slots inside it", new File(copy, "slots").exists());
 		assertFalse(new File(copy, ".active").exists());
-		assertEquals("source untouched", "header", read(new File(work, "saves/Snake/score-h.db")));
+		assertEquals("source untouched", "header", read(new File(work, "games/Snake/saves/score-h.db")));
 		assertEquals(Arrays.asList("Copy", "Other"), slots.list(GAME));
 		for (String name : slots.slotsDir(GAME).list()) {
 			assertFalse("no temporary folders left: " + name, name.endsWith(".tmp"));
@@ -305,12 +305,12 @@ public class SaveSlotsTest {
 
 	@Test
 	public void theDefaultSlotCanNotBeDeleted() throws IOException {
-		write(new File(work, "saves/Snake/keep"), "1");
+		write(new File(work, "games/Snake/saves/keep"), "1");
 		try {
 			slots.delete(GAME, SaveSlots.DEFAULT);
 			fail("expected a refusal");
 		} catch (IllegalArgumentException expected) {
-			assertTrue(new File(work, "saves/Snake/keep").isFile());
+			assertTrue(new File(work, "games/Snake/saves/keep").isFile());
 		}
 	}
 
@@ -318,16 +318,16 @@ public class SaveSlotsTest {
 
 	@Test
 	public void clearingTheDefaultKeepsTheOtherSlotsAndTheChoice() throws IOException {
-		write(new File(work, "saves/Snake/score-h.db"), "1");
-		write(new File(work, "saves/Snake/private/save.bin"), "2");
+		write(new File(work, "games/Snake/saves/score-h.db"), "1");
+		write(new File(work, "games/Snake/saves/private/save.bin"), "2");
 		slots.create(GAME, "A");
 		write(new File(slots.dir(GAME, "A"), "x"), "slot data");
 		slots.setActive(GAME, "A");
 
 		slots.clear(GAME, SaveSlots.DEFAULT);
 
-		assertFalse(new File(work, "saves/Snake/score-h.db").exists());
-		assertFalse(new File(work, "saves/Snake/private").exists());
+		assertFalse(new File(work, "games/Snake/saves/score-h.db").exists());
+		assertFalse(new File(work, "games/Snake/saves/private").exists());
 		assertEquals("slot data", read(new File(slots.dir(GAME, "A"), "x")));
 		assertEquals("A", slots.active(GAME));
 		assertTrue(slots.isEmpty(GAME, SaveSlots.DEFAULT));
@@ -335,7 +335,7 @@ public class SaveSlotsTest {
 
 	@Test
 	public void clearingASlotKeepsTheSlotItselfAndTheOthers() throws IOException {
-		write(new File(work, "saves/Snake/keep"), "default");
+		write(new File(work, "games/Snake/saves/keep"), "default");
 		slots.create(GAME, "A");
 		write(new File(slots.dir(GAME, "A"), "x"), "1");
 		write(new File(slots.dir(GAME, "A"), "sub/y"), "2");
@@ -346,14 +346,14 @@ public class SaveSlotsTest {
 		assertTrue("the slot is still there and still chosen", slots.dir(GAME, "A").isDirectory());
 		assertEquals("A", slots.active(GAME));
 		assertTrue(slots.isEmpty(GAME, "A"));
-		assertEquals("default", read(new File(work, "saves/Snake/keep")));
+		assertEquals("default", read(new File(work, "games/Snake/saves/keep")));
 	}
 
 	@Test
 	public void theDefaultCountsAsEmptyDespiteTheSlotsInsideIt() throws IOException {
 		slots.create(GAME, "A");
 		assertTrue(slots.isEmpty(GAME, SaveSlots.DEFAULT));
-		write(new File(work, "saves/Snake/x"), "1");
+		write(new File(work, "games/Snake/saves/x"), "1");
 		assertFalse(slots.isEmpty(GAME, SaveSlots.DEFAULT));
 		assertTrue("a slot that does not exist is empty", slots.isEmpty(GAME, "Ghost"));
 	}
@@ -362,39 +362,13 @@ public class SaveSlotsTest {
 
 	@Test
 	public void aSlotsSizeCountsItsOwnFilesOnly() throws IOException {
-		write(new File(work, "saves/Snake/a"), "12345");
+		write(new File(work, "games/Snake/saves/a"), "12345");
 		slots.create(GAME, "A");
 		write(new File(slots.dir(GAME, "A"), "b"), "12");
 		write(new File(slots.dir(GAME, "A"), "sub/c"), "123");
 		assertEquals("the default does not count the slots inside it", 5, slots.size(GAME, SaveSlots.DEFAULT));
 		assertEquals(5, slots.size(GAME, "A"));
 		assertEquals(0, slots.size(GAME, "Missing"));
-	}
-
-	@Test
-	public void deletingAGameRemovesAllItsSavesButNotOtherGames() throws IOException {
-		write(new File(work, "saves/Snake/x"), "1");
-		slots.create(GAME, "A");
-		slots.create("Tetris", "A");
-		slots.deleteAll(GAME);
-		assertFalse(slots.gameDir(GAME).exists());
-		assertTrue(slots.dir("Tetris", "A").isDirectory());
-	}
-
-	@Test
-	public void whenAGameFolderIsRenamedAllItsSavesAndTheChoiceMoveWithIt() throws IOException {
-		write(new File(work, "saves/Snake/d"), "default");
-		slots.create(GAME, "A");
-		write(new File(slots.dir(GAME, "A"), "x"), "1");
-		slots.setActive(GAME, "A");
-		slots.moveAll(GAME, "Snake_1");
-		assertFalse(slots.gameDir(GAME).exists());
-		assertEquals(Collections.singletonList("A"), slots.list("Snake_1"));
-		assertEquals("A", slots.active("Snake_1"));
-		assertEquals("1", read(new File(slots.dir("Snake_1", "A"), "x")));
-		assertEquals("the default slot went with it", "default",
-				read(new File(slots.dir("Snake_1", SaveSlots.DEFAULT), "d")));
-		slots.moveAll("NoSlots", "Other"); // nothing to move is fine
 	}
 
 	@Test

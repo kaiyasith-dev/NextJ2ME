@@ -116,8 +116,7 @@ public final class BackupReader {
 		while ((entry = zin.getNextEntry()) != null) {
 			progress.checkCancelled();
 			String name = entry.getName();
-			String top = checkedTopFolder(name);
-			if (!BackupScope.RESTORABLE.contains(top)) {
+			if (!isRestorable(checkedParts(name))) {
 				skipped++;
 				continue;
 			}
@@ -138,8 +137,18 @@ public final class BackupReader {
 		return new Result(info, files, total, skipped);
 	}
 
-	/** Returns the first folder of {@code name}; rejects absolute paths and ".." segments. */
-	private static String checkedTopFolder(String name) throws BackupException {
+	/** Whether a file of the backup belongs in a work folder: a shared folder or a part of a game. */
+	private static boolean isRestorable(String[] parts) {
+		if (BackupScope.GAMES.equals(parts[0])) {
+			// games/<game>/<app|saves|config|debugger>/...; a game folder may not be hidden
+			return parts.length >= 3 && !parts[1].startsWith(".")
+					&& BackupScope.RESTORABLE_GAME_DIRS.contains(parts[2]);
+		}
+		return BackupScope.RESTORABLE_SHARED.contains(parts[0]);
+	}
+
+	/** Splits {@code name} into its folders; rejects absolute paths and ".." segments. */
+	private static String[] checkedParts(String name) throws BackupException {
 		if (name.isEmpty() || name.startsWith("/") || name.contains("\\")) {
 			throw new BackupException("Unsafe path in backup: " + name);
 		}
@@ -151,7 +160,7 @@ public final class BackupReader {
 				throw new BackupException("Unsafe path in backup: " + name);
 			}
 		}
-		return parts[0];
+		return parts;
 	}
 
 	private static long writeFile(ZipInputStream zin, File dest, long time, byte[] buf,
