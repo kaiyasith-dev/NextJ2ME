@@ -89,6 +89,10 @@ public class ProfileModel {
 	@SerializedName("FpsLimit")
 	public int fpsLimit;
 
+	/** Frame generation: 0 = off, 1 = blend the game's frames, 2 = follow the motion between them. */
+	@SerializedName("FrameGeneration")
+	public int frameGeneration;
+
 	@SerializedName("ForceFullscreen")
 	public boolean forceFullscreen;
 

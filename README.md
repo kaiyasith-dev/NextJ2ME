@@ -45,6 +45,16 @@ Deleting a game removes this one folder. Reinstalling replaces only `app/`, so s
 
 Each game can keep several named save slots, for example one per player or one before a hard level. Long-press a game and choose **Save slots**: the slot marked ● is the one the game uses, and you can make a new slot (empty or a copy of the current saves), switch slots, duplicate, rename and delete them. The game picks its slot when it starts, so nothing is copied when you switch, and nothing can be changed while the game is open. The saves of a game live in `games/<game>/saves/`: the "Default" slot is that folder itself, and the slots you make are in its `slots` subfolder. Slots are included in backups, and "Clear data" clears only the slot in use.
 
+### Frame generation (experimental)
+
+For games that cap their own frame rate (for example 20-30 fps), the per-game setting **Frame generation** shows extra pictures between the frames the game draws, so the motion looks smoother on a 60 Hz screen. The game itself is not sped up or changed, only what is shown.
+
+- **Off**: normal drawing.
+- **Blend**: cross-fades between the last two game frames. Cheap.
+- **Motion**: finds how each part of the picture moved between the two frames and moves it along before blending. Smoother, uses more CPU.
+
+It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.
+
 ### Backup and restore
 
 **Settings → Backup and restore** saves your data to a single zip file and loads it back. The file is chosen with Android's system file picker, so no storage permission is needed and it can be stored anywhere: internal storage, an SD card or a cloud-backed folder.

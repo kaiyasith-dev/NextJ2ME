@@ -55,6 +55,7 @@ import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -65,6 +66,7 @@ import javax.microedition.lcdui.event.EventFilter;
 import javax.microedition.lcdui.graphics.CanvasView;
 import javax.microedition.lcdui.graphics.CanvasWrapper;
 import javax.microedition.lcdui.graphics.GlesView;
+import javax.microedition.lcdui.graphics.FrameGenerator;
 import javax.microedition.lcdui.graphics.ShaderProgram;
 import javax.microedition.lcdui.keyboard.KeyMapper;
 import javax.microedition.lcdui.keyboard.VirtualKeyboard;
@@ -130,6 +132,7 @@ public abstract class Canvas extends Displayable {
 	private static int backgroundColor;
 	private static int scaleRatio;
 	private static int fpsLimit;
+	private static int frameGeneration;
 	private static boolean screenshotRawMode;
 	private static int scaleType;
 	private static int screenGravity;
@@ -222,6 +225,14 @@ public abstract class Canvas extends Displayable {
 			fpsLimit = 1000;
 		}
 		Canvas.fpsLimit = fpsLimit;
+	}
+
+	/**
+	 * Frame generation: 0 = off, 1 = blend the frames, 2 = follow the motion between them. It only
+	 * works with the OpenGL ES graphics mode (see {@link FrameGenerator}).
+	 */
+	public static void setFrameGeneration(int mode) {
+		Canvas.frameGeneration = mode;
 	}
 
 	public static void setScreenshotRawMode(boolean enable) {
@@ -530,7 +541,8 @@ public abstract class Canvas extends Displayable {
 			if (graphicsMode == 1) {
 				GlesView glesView = new GlesView(activity);
 				glesView.setRenderer(renderer);
-				glesView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+				glesView.setRenderMode(frameGeneration != 0 ? GLSurfaceView.RENDERMODE_CONTINUOUSLY
+						: GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 				renderer.setView(glesView);
 				innerView = glesView;
 			} else {
@@ -776,6 +788,12 @@ public abstract class Canvas extends Displayable {
 		private final int[] bgTextureId = new int[1];
 		private ShaderProgram program;
 		private boolean isStarted;
+		/** Draws pictures between the game's frames; null when frame generation is off or failed. */
+		private FrameGenerator frameGenerator;
+		private final AtomicInteger frameCounter = new AtomicInteger();
+		private volatile long frameNanos;
+		private int surfaceWidth;
+		private int surfaceHeight;
 
 		@Override
 		public void onSurfaceCreated(GL10 gl, EGLConfig config) {
@@ -792,10 +810,19 @@ public abstract class Canvas extends Displayable {
 				glUniform4fv(program.uSetting, 1, shaderFilter.values, 0);
 			}
 			isStarted = true;
+			if (frameGenerator != null) {
+				frameGenerator.shutdown();
+			}
+			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration == 2, filter);
+			if (frameGeneration != 0 && frameGenerator == null) {
+				stopFrameGeneration("the device could not build the frame generation shader");
+			}
 		}
 
 		@Override
 		public void onSurfaceChanged(GL10 gl, int width, int height) {
+			surfaceWidth = width;
+			surfaceHeight = height;
 			glViewport(0, 0, width, height);
 			glUniform2f(program.uPixelDelta, 1.0f / width, 1.0f / height);
 		}
@@ -803,12 +830,59 @@ public abstract class Canvas extends Displayable {
 		@Override
 		public void onDrawFrame(GL10 gl) {
 			glClear(GL_COLOR_BUFFER_BIT);
-			synchronized (bufferLock) {
-				GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, offscreenCopy.getBitmap(), 0);
+			boolean generated = frameGenerator != null && drawGeneratedFrame();
+			if (!generated) {
+				synchronized (bufferLock) {
+					GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, offscreenCopy.getBitmap(), 0);
+				}
 			}
 			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 			if (fpsCounter != null) {
 				fpsCounter.increment();
+			}
+		}
+
+		/**
+		 * Puts the picture between two game frames on texture unit 0, ready for the normal drawing
+		 * (with the user's shader and scaling). If it fails, frame generation is switched off and the
+		 * normal texture is bound again.
+		 */
+		private boolean drawGeneratedFrame() {
+			Bitmap frame = offscreenCopy.getBitmap();
+			int texture = 0;
+			try {
+				texture = frameGenerator.render(frame, bufferLock, frameCounter.get(), frameNanos,
+						System.nanoTime());
+			} catch (RuntimeException e) {
+				Log.e(TAG, "frame generation failed", e);
+			}
+			if (texture != 0) {
+				glViewport(0, 0, surfaceWidth, surfaceHeight);
+				glUseProgram(program.id);
+				synchronized (vbo) {
+					program.loadVbo(vbo, frame.getWidth(), frame.getHeight());
+				}
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, texture);
+				return true;
+			}
+			stopFrameGeneration("frame generation could not draw");
+			glViewport(0, 0, surfaceWidth, surfaceHeight);
+			glUseProgram(program.id);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, bgTextureId[0]);
+			return false;
+		}
+
+		/** Goes back to drawing only when the game finishes a frame. */
+		private void stopFrameGeneration(String reason) {
+			Log.w(TAG, reason + ": frame generation is switched off");
+			if (frameGenerator != null) {
+				frameGenerator.shutdown();
+				frameGenerator = null;
+			}
+			if (mView != null) {
+				mView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 			}
 		}
 
@@ -845,6 +919,11 @@ public abstract class Canvas extends Displayable {
 		}
 
 		public void requestRender() {
+			if (frameGeneration != 0) {
+				// the game finished a frame: the generator picks it up on the next screen refresh
+				frameNanos = System.nanoTime();
+				frameCounter.incrementAndGet();
+			}
 			mView.requestRender();
 		}
 

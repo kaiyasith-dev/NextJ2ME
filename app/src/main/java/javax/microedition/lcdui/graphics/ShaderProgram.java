@@ -41,6 +41,8 @@ public class ShaderProgram {
 	public int uTexelDelta;
 	public int uSetting;
 	public int uPixelDelta;
+	/** The id of the linked OpenGL program. */
+	public int id;
 
 	public ShaderProgram(ShaderInfo shader) {
 		if (shader != null) {
@@ -87,6 +89,7 @@ public class ShaderProgram {
 			String errorString = GLU.gluErrorString(error);
 			Log.e(TAG, "init program: glError " + errorString);
 		}
+		id = program;
 		aPosition = glGetAttribLocation(program, "a_position");
 		aTexCoord = glGetAttribLocation(program, "a_texcoord0");
 		uTextureUnit = glGetUniformLocation(program, "sampler0");

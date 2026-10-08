@@ -224,6 +224,10 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.graphicalModeSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+				// frame generation draws through OpenGL ES only
+				int frameGenerationVisibility = position == 1 ? View.VISIBLE : View.GONE;
+				binding.frameGenerationHint.setVisibility(frameGenerationVisibility);
+				binding.frameGenerationSelector.setVisibility(frameGenerationVisibility);
 				switch (position) {
 					case 0:
 					case 3:
@@ -594,6 +598,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.enableTouchInputToggle.setChecked(params.touchInput);
 		int fpsLimit = params.fpsLimit;
 		binding.fpsLimit.setText(fpsLimit > 0 ? Integer.toString(fpsLimit) : "");
+		binding.frameGenerationSelector.setSelection(params.frameGeneration);
 
 		binding.buttonsLayoutSelector.setSelection(params.keyCodesLayout);
 		binding.buttonShapeSelector.setSelection(params.vkButtonShape);
@@ -647,6 +652,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			params.forceFullscreen = binding.forceFullscreenToggle.isChecked();
 			params.showFps = binding.showFpsToggle.isChecked();
 			params.fpsLimit = parseInt(binding.fpsLimit.getText().toString());
+		params.frameGeneration = mode == 1 ? binding.frameGenerationSelector.getSelectedItemPosition() : 0;
 
 			try {
 				params.fontSizeSmall = Integer.parseInt(binding.fontSizeSmall.getText().toString());

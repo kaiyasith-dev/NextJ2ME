@@ -280,6 +280,7 @@ public class MicroLoader {
 			Canvas.setForceFullscreen(params.forceFullscreen);
 			Canvas.setShowFps(params.showFps);
 			Canvas.setLimitFps(params.fpsLimit);
+			Canvas.setFrameGeneration(params.graphicsMode == 1 ? params.frameGeneration : 0);
 
 			Font.applySettings(params);
 

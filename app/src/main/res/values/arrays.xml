@@ -51,6 +51,11 @@
         <item>@string/pref_graphics_hw_gles</item>
         <item>@string/pref_graphics_hw_view</item>
     </string-array>
+    <string-array name="pref_frame_generation_entries">
+        <item>@string/pref_frame_generation_off</item>
+        <item>@string/pref_frame_generation_blend</item>
+        <item>@string/pref_frame_generation_motion</item>
+    </string-array>
     <string-array name="pref_scale_type_entries" >
         <item>@string/pref_screen_scale_type_none</item>
         <item>@string/pref_screen_scale_type_fit</item>
