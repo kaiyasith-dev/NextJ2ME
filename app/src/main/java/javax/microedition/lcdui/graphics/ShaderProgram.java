@@ -41,6 +41,7 @@ public class ShaderProgram {
 	public int uTexelDelta;
 	public int uSetting;
 	public int uPixelDelta;
+	public int uUvPerClip;
 	/** The id of the linked OpenGL program. */
 	public int id;
 
@@ -49,8 +50,8 @@ public class ShaderProgram {
 			String vertex = shader.vertex;
 			String fragment = shader.fragment;
 			if (vertex != null && fragment != null) {
-				String vertexCode = FileUtils.getText(shader.dir + vertex);
-				String fragmentCode = FileUtils.getText(shader.dir + fragment);
+				String vertexCode = readSource(shader, vertex);
+				String fragmentCode = readSource(shader, fragment);
 				if (createProgram(vertexCode, fragmentCode) != -1) {
 					glReleaseShaderCompiler();
 					return;
@@ -67,6 +68,14 @@ public class ShaderProgram {
 		if (program == -1) {
 			throw new RuntimeException("Init shader program error: see log for detail");
 		}
+	}
+
+	/** A shader file of the user (in the shaders folder), or one of the app's own (in the assets). */
+	private static String readSource(ShaderInfo shader, String name) {
+		if (name.startsWith(ShaderInfo.ASSET_PREFIX)) {
+			return ContextHolder.getAssetAsString(name.substring(ShaderInfo.ASSET_PREFIX.length()));
+		}
+		return FileUtils.getText(shader.dir + name);
 	}
 
 	public int createProgram(String vertex, String fragment) {
@@ -95,6 +104,7 @@ public class ShaderProgram {
 		uTextureUnit = glGetUniformLocation(program, "sampler0");
 		uTexelDelta = glGetUniformLocation(program, "u_texelDelta");
 		uPixelDelta = glGetUniformLocation(program, "u_pixelDelta");
+		uUvPerClip = glGetUniformLocation(program, "u_uvPerClip");
 		uSetting = glGetUniformLocation(program, "u_setting");
 		glUseProgram(program);
 		int error1 = glGetError();
@@ -139,5 +149,14 @@ public class ShaderProgram {
 		glVertexAttribPointer(aTexCoord, 2, GL_FLOAT, false, 4 * 4, vbo);
 		glEnableVertexAttribArray(aTexCoord);
 		glUniform2f(uTexelDelta, 1.0f / width, 1.0f / height);
+		if (uUvPerClip >= 0) {
+			// the quad is lt, lb, rt, rb with x, y, u, v each: how far the texture coordinates move
+			// for one unit of screen position, so a shader can step by whole screen pixels
+			float dx = Math.abs(vbo.get(8) - vbo.get(0));
+			float dy = Math.abs(vbo.get(5) - vbo.get(1));
+			float du = Math.abs(vbo.get(10) - vbo.get(2));
+			float dv = Math.abs(vbo.get(7) - vbo.get(3));
+			glUniform2f(uUvPerClip, dx > 0 ? du / dx : 0, dy > 0 ? dv / dy : 0);
+		}
 	}
 }

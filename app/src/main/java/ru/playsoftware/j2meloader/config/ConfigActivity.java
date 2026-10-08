@@ -49,6 +49,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -376,6 +377,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			Collections.sort(infos);
 		}
 		infos.add(0, new ShaderInfo(getString(R.string.identity_filter), "woesss"));
+		infos.addAll(1, Arrays.asList(ShaderInfo.builtIns()));
 		spShaderAdapter.notifyDataSetChanged();
 		ShaderInfo selected = params.shader;
 		if (selected != null) {

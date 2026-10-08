@@ -24,6 +24,9 @@ import androidx.annotation.NonNull;
 import com.google.gson.annotations.SerializedName;
 
 public class ShaderInfo implements Comparable<ShaderInfo>, Parcelable {
+	/** A file name with this prefix is read from the app's assets instead of the shaders folder. */
+	public static final String ASSET_PREFIX = "asset:";
+
 	public transient String dir;
 	@SerializedName("fragment")
 	public String fragment;
@@ -39,6 +42,40 @@ public class ShaderInfo implements Comparable<ShaderInfo>, Parcelable {
 	@SerializedName("Settings")
 	public float[] values;
 
+
+	/** The filters that come with the app: they need no files in the shaders folder. */
+	static ShaderInfo[] builtIns() {
+		return new ShaderInfo[]{
+				builtIn("Smooth upscale", "smooth.fsh",
+						new Setting("Border softness (screen pixels)", 1.5f, 1f, 6f, 0.25f),
+						new Setting("Bicubic mix", 0.4f, 0f, 1f, 0.05f),
+						new Setting("Bicubic overshoot", 0.5f, 0f, 1f, 0.05f)),
+				builtIn("Pixel art (corner smoothing)", "pixelart.fsh",
+						new Setting("Border softness (screen pixels)", 1.25f, 1f, 6f, 0.25f),
+						new Setting("Corner smoothing", 1f, 0f, 1f, 0.05f),
+						new Setting("Same colour within", 0.04f, 0.01f, 0.2f, 0.01f)),
+				builtIn("FXAA (3D edges)", "fxaa.fsh",
+						new Setting("Longest blur (screen pixels)", 8f, 2f, 16f, 1f),
+						new Setting("Amount", 1f, 0f, 1f, 0.05f)),
+				builtIn("Sharpen", "sharpen.fsh",
+						new Setting("Strength", 0.6f, 0f, 2f, 0.05f),
+						new Setting("Radius (screen pixels)", 1f, 0.5f, 2.5f, 0.1f),
+						new Setting("Edge overshoot", 0.25f, 0f, 1f, 0.05f)),
+				builtIn("Retro screen", "retro.fsh",
+						new Setting("Scan lines", 0.35f, 0f, 1f, 0.05f),
+						new Setting("Pixel grid", 0.25f, 0f, 1f, 0.05f),
+						new Setting("Saturation", 1.1f, 0.5f, 1.5f, 0.05f),
+						new Setting("Gamma", 1f, 0.7f, 1.5f, 0.05f)),
+		};
+	}
+
+	private static ShaderInfo builtIn(String name, String fragment, Setting... settings) {
+		ShaderInfo info = new ShaderInfo(name, "ksdevla");
+		info.vertex = ASSET_PREFIX + "shaders/simple.vsh";
+		info.fragment = ASSET_PREFIX + "shaders/" + fragment;
+		System.arraycopy(settings, 0, info.settings, 0, settings.length);
+		return info;
+	}
 
 	@SuppressWarnings("unused")    // used by Gson deserialization
 	public ShaderInfo() {
@@ -253,6 +290,14 @@ public class ShaderInfo implements Comparable<ShaderInfo>, Parcelable {
 		}
 
 		public Setting() {
+		}
+
+		Setting(String name, float def, float min, float max, float step) {
+			this.name = name;
+			this.def = def;
+			this.min = min;
+			this.max = max;
+			this.step = step;
 		}
 
 		@Override

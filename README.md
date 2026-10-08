@@ -55,6 +55,18 @@ For games that cap their own frame rate (for example 20-30 fps), the per-game se
 
 It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.
 
+### Built-in shaders
+
+The shader list (graphics mode **HW acceleration (OpenGL ES)**) has five filters that need no files in the shaders folder. Each has sliders behind the tune button next to the list.
+
+- **Smooth upscale**: keeps the game's pixels crisp and smooths only their borders (sharp bilinear), with an optional mix of Catmull-Rom bicubic scaling. A good default for most games.
+- **Pixel art (corner smoothing)**: rounds the corners of blocky pixels (Scale2x rules) before scaling. For 2D games with sprites.
+- **FXAA (3D edges)**: smooths jagged polygon edges in 3D games. Best with screen filtering on.
+- **Sharpen**: an unsharp mask measured in screen pixels, to counter the softness of upscaling. Strength, radius and edge overshoot.
+- **Retro screen**: scan lines and a pixel grid (they fade out when the picture is scaled up less than about 2x), plus saturation and gamma.
+
+Only one shader can be used at a time. Shaders from the shaders folder still work as before.
+
 ### Backup and restore
 
 **Settings → Backup and restore** saves your data to a single zip file and loads it back. The file is chosen with Android's system file picker, so no storage permission is needed and it can be stored anywhere: internal storage, an SD card or a cloud-backed folder.
