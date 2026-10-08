@@ -63,7 +63,7 @@ Run the unit tests (including the Memory Debugger tests) with:
 
 ## Contributing
 
-Bug reports, feature requests and pull requests are welcome through the [issue tracker](https://github.com/kaiyasith-dev/NextJ2ME/issues). When you report a bug, please include the game name, your Android version and device, and the steps to reproduce it. For changes to the debugger, please add or update a test in `app/src/test/java/ru/playsoftware/j2meloader/debugger/`.
+Bug reports, feature requests and pull requests are welcome through the [issue tracker](https://github.com/ksdevla/NextJ2ME/issues). When you report a bug, please include the game name, your Android version and device, and the steps to reproduce it. For changes to the debugger, please add or update a test in `app/src/test/java/ru/playsoftware/j2meloader/debugger/`.
 
 ## Credits and license
 
