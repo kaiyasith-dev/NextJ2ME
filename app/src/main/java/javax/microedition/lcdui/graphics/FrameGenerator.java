@@ -87,6 +87,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class FrameGenerator {
 	private static final String TAG = FrameGenerator.class.getName();
+	/** Cross-fade the frames. */
+	public static final int MODE_BLEND = 1;
+	/** Follow the motion between frames. */
+	public static final int MODE_MOTION = 2;
+	/** Follow the motion finer, faster and more precisely, for more CPU and GPU time. */
+	public static final int MODE_MOTION_HQ = 3;
 	private static final int BLOCK = 8;
 	private static final int RANGE = 8;
 
@@ -118,7 +124,7 @@ public final class FrameGenerator {
 		int frame = -2;
 	}
 
-	private final boolean wantMotion;
+	private final int mode;
 	private final boolean linear;
 	private final InterpolationProgram program;
 	private final FloatBuffer quad = ByteBuffer.allocateDirect(16 * 4)
@@ -144,6 +150,10 @@ public final class FrameGenerator {
 	private int frameIndex;
 
 	private MotionEstimator estimator;
+	private FineMotionEstimator fineEstimator;
+	/** Steps per frame pixel in the motion texture, and whether the shader tries more blocks. */
+	private float motionUnit = 1f;
+	private boolean wideSearch;
 	private int[] pixels;
 	private ExecutorService worker;
 	private volatile Motion motion;
@@ -153,9 +163,9 @@ public final class FrameGenerator {
 	private float blockPxX = 1;
 	private float blockPxY = 1;
 
-	private FrameGenerator(InterpolationProgram program, boolean wantMotion, boolean linear) {
+	private FrameGenerator(InterpolationProgram program, int mode, boolean linear) {
 		this.program = program;
-		this.wantMotion = wantMotion;
+		this.mode = mode;
 		this.linear = linear;
 		// a full-screen quad: clip position then texture position, so the output texture is the
 		// same picture as the input textures
@@ -170,13 +180,13 @@ public final class FrameGenerator {
 	/**
 	 * Creates the generator on the GL thread.
 	 *
-	 * @param withMotion follow the motion between frames; otherwise the frames are only cross-faded
-	 * @param linear     filter the textures smoothly (the screen's filtering setting)
+	 * @param mode   {@link #MODE_BLEND}, {@link #MODE_MOTION} or {@link #MODE_MOTION_HQ}
+	 * @param linear filter the textures smoothly (the screen's filtering setting)
 	 * @return null if the device can not run the shader, in which case the normal drawing is used
 	 */
-	public static FrameGenerator create(boolean withMotion, boolean linear) {
+	public static FrameGenerator create(int mode, boolean linear) {
 		InterpolationProgram p = InterpolationProgram.create();
-		return p == null ? null : new FrameGenerator(p, withMotion, linear);
+		return p == null ? null : new FrameGenerator(p, mode, linear);
 	}
 
 	/**
@@ -281,16 +291,29 @@ public final class FrameGenerator {
 		java.util.Arrays.fill(motions, null);
 		motion = null;
 		estimator = null;
+		fineEstimator = null;
 		pixels = null;
-		if (wantMotion && w >= 4 * BLOCK && h >= 4 * BLOCK) {
-			int gw = w / 2;
-			int gh = h / 2;
-			estimator = new MotionEstimator(gw, gh, BLOCK, RANGE);
+		motionUnit = 1f;
+		wideSearch = false;
+		int minSize = 4 * Math.max(BLOCK, FineMotionEstimator.BLOCK);
+		if (mode >= MODE_MOTION && w >= minSize && h >= minSize) {
+			if (mode == MODE_MOTION_HQ) {
+				fineEstimator = new FineMotionEstimator(w, h);
+				gridCols = fineEstimator.cols();
+				gridRows = fineEstimator.rows();
+				blockPxX = blockPxY = FineMotionEstimator.BLOCK;
+				motionUnit = FineMotionEstimator.UNITS_PER_PIXEL;
+				wideSearch = true;
+			} else {
+				int gw = w / 2;
+				int gh = h / 2;
+				estimator = new MotionEstimator(gw, gh, BLOCK, RANGE);
+				gridCols = estimator.cols();
+				gridRows = estimator.rows();
+				blockPxX = (float) BLOCK * w / gw;
+				blockPxY = (float) BLOCK * h / gh;
+			}
 			pixels = new int[w * h];
-			gridCols = estimator.cols();
-			gridRows = estimator.rows();
-			blockPxX = (float) BLOCK * w / gw;
-			blockPxY = (float) BLOCK * h / gh;
 			worker = Executors.newSingleThreadExecutor(r -> {
 				Thread t = new Thread(r, "FrameGenMotion");
 				t.setDaemon(true);
@@ -298,7 +321,7 @@ public final class FrameGenerator {
 			});
 			busy.set(false);
 		}
-		pacer = new FramePacer(estimator != null);
+		pacer = new FramePacer(worker != null);
 		return true;
 	}
 
@@ -314,7 +337,7 @@ public final class FrameGenerator {
 	// ------------------------------------------------------------------ a new game frame
 
 	private void acceptFrame(Bitmap bitmap, Object bufferLock, long frameNanos) {
-		boolean grab = estimator != null && !busy.get();
+		boolean grab = worker != null && !busy.get();
 		// the pacer makes sure the frame this one replaces is no longer shown
 		int n = pacer.onFrame(frameNanos, grab);
 		frameIndex = n;
@@ -343,18 +366,23 @@ public final class FrameGenerator {
 		final int w = width;
 		final int h = height;
 		final MotionEstimator est = estimator;
+		final FineMotionEstimator fine = fineEstimator;
 		final ExecutorService executor = worker;
 		final GrayState state = grayState;
 		final int gen = generation;
 		executor.execute(() -> {
 			try {
-				byte[] gray = MotionEstimator.toGray(px, w, h);
+				byte[] gray = fine != null ? FineMotionEstimator.toGray(px, w, h)
+						: MotionEstimator.toGray(px, w, h);
 				// a new picture is only grabbed after this job finished, so nothing else reads it
 				Motion found = null;
 				if (state.gray != null && state.frame == index - 1) {
-					MotionEstimator.Result r = est.estimate(state.gray, gray);
-					found = new Motion(gen, index, r.cols, r.rows, r.encode(2), r.sceneCut,
-							System.nanoTime());
+					MotionEstimator.Result r = fine != null ? fine.estimate(state.gray, gray)
+							: est.estimate(state.gray, gray);
+					// the fine vectors are already in the texture's steps; the normal ones are in
+					// half-size pixels, two frame pixels each
+					found = new Motion(gen, index, r.cols, r.rows, r.encode(fine != null ? 1 : 2),
+							r.sceneCut, System.nanoTime());
 				}
 				state.gray = gray;
 				state.frame = index;
@@ -416,6 +444,8 @@ public final class FrameGenerator {
 		glUniform1i(program.uMotion, 2);
 		glUniform1f(program.uT, t);
 		glUniform1f(program.uUseMotion, useMotion ? 1f : 0f);
+		glUniform1f(program.uMotionUnit, motionUnit);
+		glUniform1f(program.uWide, wideSearch ? 1f : 0f);
 		glUniform2f(program.uTexSize, width, height);
 		glUniform2f(program.uBlockPx, blockPxX, blockPxY);
 		glUniform2f(program.uGrid, gridCols, gridRows);

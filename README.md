@@ -52,6 +52,7 @@ For games that cap their own frame rate (for example 20-30 fps), the per-game se
 - **Off**: normal drawing.
 - **Blend**: cross-fades between the last two game frames. Cheap.
 - **Motion**: finds how each part of the picture moved between the two frames and moves it along before blending. Smoother, uses more CPU.
+- **Motion HQ**: like Motion, but measures the motion on 8x8 pixel blocks at full size, to a quarter of a pixel, and follows faster movement (up to 32 pixels per frame). Smoothest and sharpest; uses the most CPU and GPU.
 
 It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.
 

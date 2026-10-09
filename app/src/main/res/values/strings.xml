@@ -179,6 +179,7 @@
     <string name="pref_frame_generation_off">Off</string>
     <string name="pref_frame_generation_blend">Blend (smooth, cheap)</string>
     <string name="pref_frame_generation_motion">Motion (smoother, heavier)</string>
+    <string name="pref_frame_generation_motion_hq">Motion HQ (smoothest, heaviest)</string>
     <string name="PREF_FONT_ANTI_ALIASING">Anti-Aliasing</string>
     <string name="pref_screen_gravity">Screen gravity</string>
     <string name="pref_screen_gravity_bottom">Bottom</string>

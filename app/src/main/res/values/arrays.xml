@@ -55,6 +55,7 @@
         <item>@string/pref_frame_generation_off</item>
         <item>@string/pref_frame_generation_blend</item>
         <item>@string/pref_frame_generation_motion</item>
+        <item>@string/pref_frame_generation_motion_hq</item>
     </string-array>
     <string-array name="pref_render_3d_entries">
         <item>@string/pref_render_3d_normal</item>

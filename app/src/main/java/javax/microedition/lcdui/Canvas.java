@@ -234,7 +234,8 @@ public abstract class Canvas extends Displayable {
 	}
 
 	/**
-	 * Frame generation: 0 = off, 1 = blend the frames, 2 = follow the motion between them. It only
+	 * Frame generation: 0 = off, 1 = blend the frames, 2 = follow the motion between them, 3 = follow
+	 * it finer and more precisely (more CPU and GPU time). It only
 	 * works with the OpenGL ES graphics mode (see {@link FrameGenerator}).
 	 */
 	public static void setFrameGeneration(int mode) {
@@ -822,7 +823,7 @@ public abstract class Canvas extends Displayable {
 				// a new GL context: the old generator's GL objects went with the old one
 				frameGenerator.abandon();
 			}
-			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration == 2, filter);
+			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration, filter);
 			if (frameGeneration != 0 && frameGenerator == null) {
 				stopFrameGeneration("the device could not build the frame generation shader");
 			} else if (frameGenerator != null) {

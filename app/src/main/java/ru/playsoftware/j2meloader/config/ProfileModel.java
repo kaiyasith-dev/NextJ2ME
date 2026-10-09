@@ -89,7 +89,10 @@ public class ProfileModel {
 	@SerializedName("FpsLimit")
 	public int fpsLimit;
 
-	/** Frame generation: 0 = off, 1 = blend the game's frames, 2 = follow the motion between them. */
+	/**
+	 * Frame generation: 0 = off, 1 = blend the game's frames, 2 = follow the motion between them,
+	 * 3 = follow it in high quality.
+	 */
 	@SerializedName("FrameGeneration")
 	public int frameGeneration;
 
