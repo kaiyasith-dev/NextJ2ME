@@ -94,9 +94,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">توقف اجباری برنامه ممکن است باعث از بین رفتن اطلاعات شود و یا آن را به طور کامل متوقف کند آیا ادامه می دهید؟</string>
     <string name="CONFIRMATION_REQUIRED">به تایید نیاز دارد</string>
     <string name="select_dialog_title">انتخاب میدلت</string>
-    <string name="crash_dialog_message">آیا می خواهید گزارش خطا را به توسعه دهنده ارسال کنید؟</string>
     <string name="crash_dialog_title">خطا شناسایی شده</string>
-    <string name="report_crash">ارسال</string>
     <string name="layout_edit_finished">حالت ویرایش پایان یافته</string>
     <string name="layout_edit_finish">پایان حالت ویرایش</string>
     <string name="layout_edit_mode">حالت ویرایش طرح کلید</string>

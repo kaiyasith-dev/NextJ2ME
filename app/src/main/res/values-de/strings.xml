@@ -131,9 +131,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Erzwungenes Schliessen der Anwendung kann zu Datenverlust führen oder die Anwendung beschädigen!\nFortfahren?</string>
     <string name="CONFIRMATION_REQUIRED">Bestätigung erforderlich</string>
     <string name="select_dialog_title">MIDlet auswählen</string>
-    <string name="crash_dialog_message">Möchten Sie ein Fehlerbericht an den Entwickler senden?</string>
     <string name="crash_dialog_title">Fehler festgestellt</string>
-    <string name="report_crash">Senden</string>
     <string name="layout_edit_finished">Bearbeitungsmodus beendet</string>
     <string name="layout_edit_finish">Bearbeitungsmodus beenden</string>
     <string name="layout_edit_mode">Tastaturlayout Bearbeitungsmodus</string>

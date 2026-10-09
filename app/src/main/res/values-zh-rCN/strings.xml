@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">强制关闭应用可能导致数据丢失或损坏！\n要继续吗？</string>
     <string name="CONFIRMATION_REQUIRED">需要确认</string>
     <string name="select_dialog_title">选择程序结构</string>
-    <string name="crash_dialog_message">是否向开发者发送错误报告？</string>
     <string name="crash_dialog_title">检测到错误</string>
-    <string name="report_crash">发送</string>
     <string name="layout_edit_finished">按键布局已保存</string>
     <string name="layout_edit_finish">保存按键布局</string>
     <string name="layout_edit_mode">编辑按键布局</string>

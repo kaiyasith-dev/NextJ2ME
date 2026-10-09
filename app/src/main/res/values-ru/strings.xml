@@ -140,9 +140,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Принудительное закрытие приложения может привести к потере данных или даже полной его неработоспособности!\nПродолжить?</string>
     <string name="CONFIRMATION_REQUIRED">Требуется подтверждение</string>
     <string name="select_dialog_title">Выберите MIDlet</string>
-    <string name="crash_dialog_message">Вы хотите отправить отчет об ошибке разработчику?</string>
     <string name="crash_dialog_title">Произошла ошибка</string>
-    <string name="report_crash">Отправить</string>
     <string name="layout_edit_finished">Редактирование раскладки завершено</string>
     <string name="layout_edit_finish">Завершить редактирование раскладки</string>
     <string name="layout_edit_mode">Режим редактирования раскладки</string>

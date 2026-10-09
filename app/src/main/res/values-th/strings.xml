@@ -67,9 +67,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">บังคับปิดแอพลิเคชันอาจทำให้สูญเสียข้อมูล หรือแม้แต่ทำลายอย่างสมบูรณ์! \nทำต่อ?</string>
     <string name="CONFIRMATION_REQUIRED">ต้องการยืนยัน</string>
     <string name="select_dialog_title">เลือก MIDlet</string>
-    <string name="crash_dialog_message">คุณต้องการส่งรายงานข้อผิดพลาดให้นักพัฒนาหรือไม่?</string>
     <string name="crash_dialog_title">พบข้อผิดพลาด</string>
-    <string name="report_crash">ส่ง</string>
     <string name="layout_edit_finished">เสร็จสิ้นโหมดแก้ไข</string>
     <string name="layout_edit_finish">เสร็จสิ้นโหมดแก้ไข</string>
     <string name="layout_edit_mode">แก้ไข keylayout</string>

@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Bắt buộc đóng ứng dụng có thể dẫn đến mất dữ liệu hoặc thậm chí hư hại hoàn toàn!\nTiến hành?</string>
     <string name="CONFIRMATION_REQUIRED">Yêu cầu xác nhận</string>
     <string name="select_dialog_title">Chọn MIDlet</string>
-    <string name="crash_dialog_message">Bạn có muốn gửi báo cáo lỗi đến nhà phát triển không?</string>
     <string name="crash_dialog_title">Đã phát hiện lỗi</string>
-    <string name="report_crash">Gửi</string>
     <string name="layout_edit_finished">Đã hoàn tất chế độ chỉnh sửa</string>
     <string name="layout_edit_finish">Hoàn thành chế độ chỉnh sửa</string>
     <string name="layout_edit_mode">Chế độ chỉnh sửa cấu trúc phím</string>

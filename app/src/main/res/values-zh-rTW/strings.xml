@@ -80,9 +80,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">強制關閉應用程序可能會導致數據丟失甚至完全破壞！\nProceed？</string>
     <string name="CONFIRMATION_REQUIRED">需要確認</string>
     <string name="select_dialog_title">選擇程序結搆</string>
-    <string name="crash_dialog_message">是否需要向開發者發送錯誤報告？</string>
     <string name="crash_dialog_title">檢測到錯誤</string>
-    <string name="report_crash">發送</string>
     <string name="layout_edit_finished">編輯模式已完成</string>
     <string name="layout_edit_finish">按鍵佈挶編輯</string>
     <string name="layout_edit_mode">按鍵佈挶編輯</string>

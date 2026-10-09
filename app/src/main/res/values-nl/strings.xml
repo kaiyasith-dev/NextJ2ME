@@ -110,9 +110,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Als u de toepassing forceert om de toepassing te sluiten, kan dit leiden tot gegevensverlies of zelfs helemaal breken! \nVerder?</string>
     <string name="CONFIRMATION_REQUIRED">Bevestiging vereist</string>
     <string name="select_dialog_title">Selecteer MIDled</string>
-    <string name="crash_dialog_message">Wilt u een foutrapport verzenden naar de ontwikkelaar?</string>
     <string name="crash_dialog_title">Fout gedetecteerd</string>
-    <string name="report_crash">Verzenden</string>
     <string name="layout_edit_finished">Bewerkingsmodus voltooid</string>
     <string name="layout_edit_finish">Voltooi de bewerkingsmodus</string>
     <string name="layout_edit_mode">Keylayout bewerkingsmodus</string>

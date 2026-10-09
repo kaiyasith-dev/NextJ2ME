@@ -124,9 +124,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Wymuszenie zamknięcia aplikacji może spowodować utratę danych lub nawet całkowicie ją zepsuć! \nKontynuować?</string>
     <string name="CONFIRMATION_REQUIRED">Wymagane potwierdzenie</string>
     <string name="select_dialog_title">Wybierz MIDlet</string>
-    <string name="crash_dialog_message">Czy chcesz wysłać raport o błędzie do programisty?</string>
     <string name="crash_dialog_title">Wykryto błąd</string>
-    <string name="report_crash">Wyślij</string>
     <string name="layout_edit_finished">Tryb edycji został zakończony</string>
     <string name="layout_edit_finish">Zakończ tryb edycji</string>
     <string name="layout_edit_mode">Tryb edycji układu przycisków</string>

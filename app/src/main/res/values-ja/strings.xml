@@ -95,9 +95,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">アプリケーションを強制終了すると、データが失われたり、完全に破損する可能性があります。 続行しますか？</string>
     <string name="CONFIRMATION_REQUIRED">確認が必要です</string>
     <string name="select_dialog_title">MIDlet を選択</string>
-    <string name="crash_dialog_message">エラー報告を開発者に送信しますか？</string>
     <string name="crash_dialog_title">エラーを検出しました</string>
-    <string name="report_crash">送信</string>
     <string name="layout_edit_finished">編集モードを終了しました</string>
     <string name="layout_edit_finish">編集モードを終了</string>
     <string name="layout_edit_mode">編集モードのキー配列</string>

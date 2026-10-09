@@ -79,9 +79,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Închiderea forțată a aplicației ar putea duce la pierderea datelor!\nVrei să continui?</string>
     <string name="CONFIRMATION_REQUIRED">Confirmare necesară</string>
     <string name="select_dialog_title">Selecteaza MIDlet</string>
-    <string name="crash_dialog_message">Dorești să trimiți raportul erorii către programator?</string>
     <string name="crash_dialog_title">Eroare detectată</string>
-    <string name="report_crash">Trimite</string>
     <string name="layout_edit_finished">Modul de editare a fost terminat</string>
     <string name="layout_edit_finish">Termină modul de editare</string>
     <string name="layout_edit_mode">Modul de editare al formatului tastaturii</string>

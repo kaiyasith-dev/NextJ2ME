@@ -125,9 +125,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Принудителното затваряне може да предизвика загуба на данни или проблем в приложението!\nПродължи?</string>
     <string name="CONFIRMATION_REQUIRED">Изисква се потвърждение</string>
     <string name="select_dialog_title">Изберете MIDlet</string>
-    <string name="crash_dialog_message">Искате ли да изпратите отчет за грешки на разработчика?</string>
     <string name="crash_dialog_title">Открита е грешка</string>
-    <string name="report_crash">Изпрати</string>
     <string name="layout_edit_finished">Режим на редактиране е приключен</string>
     <string name="layout_edit_finish">Завърши режим на редактиране</string>
     <string name="layout_edit_mode">Режим за редактиране на клавишите</string>

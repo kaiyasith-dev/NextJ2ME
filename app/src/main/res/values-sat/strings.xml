@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">ᱮᱯ ᱡᱩᱨ ᱛᱮ ᱵᱚᱸᱫ ᱞᱮᱠᱷᱟᱱ ᱰᱟᱴᱟ ᱠᱚ ᱚᱴᱟᱝ ᱚᱜᱼᱟ ᱟᱨ ᱵᱟᱝ ᱯᱩᱨᱟᱹ ᱠᱷᱟᱨᱟᱯᱚᱜᱼᱟ!\nᱢᱟᱲᱟᱝ ᱥᱮᱫ ᱞᱟᱦᱟᱜ ᱟᱢ ᱥᱮ?</string>
     <string name="CONFIRMATION_REQUIRED">ᱠᱟᱹᱱᱯᱷᱟᱹᱨᱢ ᱫᱚᱨᱠᱟᱨ</string>
     <string name="select_dialog_title">MIDlet ᱵᱟᱪᱷᱟᱣ ᱢᱮ</string>
-    <string name="crash_dialog_message">ᱟᱢ ᱰᱮᱵᱽᱷᱞᱚᱯᱟᱹᱨ ᱴᱷᱮᱱ ᱵᱷᱩᱞ ᱨᱤᱯᱚᱴ ᱵᱷᱮᱡᱟ ᱥᱟᱱᱟᱢ ᱠᱟᱱᱟ ᱥᱮ?</string>
     <string name="crash_dialog_title">ᱵᱷᱩᱞ ᱯᱟᱸᱛᱮ ᱧᱟᱢᱮᱱᱟ</string>
-    <string name="report_crash">ᱵᱷᱮᱡᱟ</string>
     <string name="layout_edit_finished">ᱥᱟᱯᱲᱟᱣ ᱢᱳᱰ ᱪᱟᱵᱟᱮᱱᱟ</string>
     <string name="layout_edit_finish">ᱥᱟᱯᱲᱟᱣ ᱢᱤᱰ ᱪᱟᱵᱟᱭᱢᱮ</string>
     <string name="layout_edit_mode">ᱠᱤᱭᱞᱮᱭᱟᱩᱴ ᱥᱟᱯᱲᱟᱣ ᱢᱳᱰ</string>

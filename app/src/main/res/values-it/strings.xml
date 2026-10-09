@@ -97,9 +97,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">La chiusura forzata dell\'applicazione potrebbe causare una perdita di dati o la loro perdita completa!\nProcedere?</string>
     <string name="CONFIRMATION_REQUIRED">Conferma richiesta</string>
     <string name="select_dialog_title">Scegli MIDlet</string>
-    <string name="crash_dialog_message">Vuoi inviare il report dell\'errore allo sviluppatore?</string>
     <string name="crash_dialog_title">Errore rilevato</string>
-    <string name="report_crash">Invia</string>
     <string name="layout_edit_finished">Modalità modifica conclusa</string>
     <string name="layout_edit_finish">Termina modalità modifica</string>
     <string name="layout_edit_mode">Modalità modifica disposizione tasti</string>

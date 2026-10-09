@@ -60,9 +60,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Tvangslukning af programmet kan medføre tab af data eller endda ødelægge det helt!\nFortsæt?</string>
     <string name="CONFIRMATION_REQUIRED">Bekræftelse kræves</string>
     <string name="select_dialog_title">Vælg MIDlet</string>
-    <string name="crash_dialog_message">Vil du sende en fejlrapport til udvikleren?</string>
     <string name="crash_dialog_title">Fejl registreret</string>
-    <string name="report_crash">Send</string>
     <string name="layout_edit_finished">Redigeringstilstand afsluttet</string>
     <string name="layout_edit_finish">Afslut redigeringstilstand</string>
     <string name="layout_edit_mode">Tastelayout redigeringstilstand</string>

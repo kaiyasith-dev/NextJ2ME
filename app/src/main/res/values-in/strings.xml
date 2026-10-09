@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Menutup paksa aplikasi akan berakibat data menjadi hilang atau rusak sepenuhnya! \nLanjutkan?</string>
     <string name="CONFIRMATION_REQUIRED">Memerlukan konfirmasi</string>
     <string name="select_dialog_title">Pilih MIDlet</string>
-    <string name="crash_dialog_message">Apakah Anda ingin mengirim laporan kesalahan kepada pengembang?</string>
     <string name="crash_dialog_title">Kesalahan terdeteksi</string>
-    <string name="report_crash">Kirim</string>
     <string name="layout_edit_finished">Mode ubah telah selesai</string>
     <string name="layout_edit_finish">Akhiri mode ubah</string>
     <string name="layout_edit_mode">Ubah letak tombol</string>

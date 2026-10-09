@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Uygulamayı zorla kapatmak veri kaybına neden olabilir veya tamamen bozabilir!\nDevam edilsin mi?</string>
     <string name="CONFIRMATION_REQUIRED">Onaylama gerekli</string>
     <string name="select_dialog_title">MIDlet seçin</string>
-    <string name="crash_dialog_message">Geliştiriciye hata raporu göndermek istiyor musunuz?</string>
     <string name="crash_dialog_title">Hata algılandı</string>
-    <string name="report_crash">Gönder</string>
     <string name="layout_edit_finished">Düzenleme modu bitti</string>
     <string name="layout_edit_finish">Düzenleme modunu bitir</string>
     <string name="layout_edit_mode">Tuş düzenini düzenleme modu</string>

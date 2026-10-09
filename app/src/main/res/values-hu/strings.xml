@@ -99,9 +99,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Az alkalmazás erőltetett bezárása adatvesztéshez, vagy akár teljesen működésképtelenné váláshoz vezethet!\nFolytatja?</string>
     <string name="CONFIRMATION_REQUIRED">Megerősítés szükséges</string>
     <string name="select_dialog_title">Válassza ki a MIDlet</string>
-    <string name="crash_dialog_message">Szeretné elküldeni a hibajelentést a fejlesztőknek?</string>
     <string name="crash_dialog_title">Hiba észlelhető</string>
-    <string name="report_crash">Küldés</string>
     <string name="layout_edit_finished">Szerkesztési mód bezárva</string>
     <string name="layout_edit_finish">Szerkesztési mód bezárása</string>
     <string name="layout_edit_mode">Gombelrendezés-szerkesztő mód</string>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Nikita Shakarun
+ * Copyright 2026 ksdevla
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,11 +27,11 @@ import org.acra.sender.ReportSender;
 import org.acra.sender.ReportSenderFactory;
 
 @AutoService(ReportSenderFactory.class)
-public class AppCenterSenderFactory implements ReportSenderFactory {
+public class LocalReportSenderFactory implements ReportSenderFactory {
 	@NonNull
 	@Override
 	public ReportSender create(@NonNull Context context, @NonNull CoreConfiguration config) {
-		return new AppCenterSender();
+		return new LocalReportSender();
 	}
 
 	@Override

@@ -170,7 +170,6 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
 
     // Networking && APIs
-    implementation 'com.android.volley:volley:1.2.1'
     implementation 'com.google.code.gson:gson:2.9.0'
     implementation 'com.google.guava:guava:31.0.1-android'
 

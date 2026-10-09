@@ -198,9 +198,9 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Force-closing the application may result in data loss or even break it completely!\nProceed?</string>
     <string name="CONFIRMATION_REQUIRED">Confirmation required</string>
     <string name="select_dialog_title">Select MIDlet</string>
-    <string name="crash_dialog_message">Do you want to send error report to the developer?</string>
+    <string name="crash_dialog_message">The app has crashed. Save an error report to a file on this device? Nothing is sent anywhere; you can attach the file to a bug report.</string>
     <string name="crash_dialog_title">Error detected</string>
-    <string name="report_crash">Send</string>
+    <string name="report_crash">Save</string>
     <string name="layout_edit_finished">Edit mode finished</string>
     <string name="layout_edit_finish">Finish edit mode</string>
     <string name="layout_edit_mode">Keylayout edit mode</string>

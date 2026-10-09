@@ -110,9 +110,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">앱을 강제 종료하면 데이터가 소실되거나 손상될 수 있습니다!\n계속하시겠습니까?</string>
     <string name="CONFIRMATION_REQUIRED">확인이 필요함</string>
     <string name="select_dialog_title">MIDlet 선택</string>
-    <string name="crash_dialog_message">개발자에게 오류 보고서를 전송할까요?</string>
     <string name="crash_dialog_title">오류가 감지됨</string>
-    <string name="report_crash">보내기</string>
     <string name="layout_edit_finished">편집 모드 완료됨</string>
     <string name="layout_edit_finish">편집 모드 완료</string>
     <string name="layout_edit_mode">키 배치 편집</string>

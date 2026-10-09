@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Қолданбаны күштеп жабу деректердің жоғалуы немесе жасамауы мүмкін!\nСонда да жалғастырасыз ба?</string>
     <string name="CONFIRMATION_REQUIRED">Расталу қажет</string>
     <string name="select_dialog_title">MIDlet таңдау</string>
-    <string name="crash_dialog_message">Орын алған қатены әзірлеушіге жібергіңіз келеме?</string>
     <string name="crash_dialog_title">Қате орын алды</string>
-    <string name="report_crash">Жіберу</string>
     <string name="layout_edit_finished">Өзгерту режимі аяқталды</string>
     <string name="layout_edit_finish">Өзгерту режимін аяқтау</string>
     <string name="layout_edit_mode">Пернелердің орналасуын өзгерту режимі</string>

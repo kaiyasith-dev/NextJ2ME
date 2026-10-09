@@ -78,9 +78,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">ফোর্স বন্ধ করার ফলে ডাটা ক্ষতিগ্রস্ত অথবা সম্পূর্ণভাবে ভেঙ্গে যতে পারে\nপ্রোসেস্ট?</string>
     <string name="CONFIRMATION_REQUIRED">অনুমোদন প্রয়োজন</string>
     <string name="select_dialog_title">MIDlet নির্বাচন করুন</string>
-    <string name="crash_dialog_message">ডেভেলপারের করা ত্রুটির প্রতিবেদন পাঠাতে চান?</string>
     <string name="crash_dialog_title">ত্রুটি শনাক্ত হয়েছে</string>
-    <string name="report_crash">প্রেরণ করুন</string>
     <string name="layout_edit_finished">সম্পাদনা মোডে কাজ শেষ</string>
     <string name="layout_edit_finish">সম্পাদন মোড শেষ করুন</string>
     <string name="layout_edit_mode">Keylayout সম্পাদন মোড</string>

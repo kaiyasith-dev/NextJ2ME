@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Примусове закривання додатку може призвести до втрати даних або навіть до повного виведення його з ладу! \nПродовжити?</string>
     <string name="CONFIRMATION_REQUIRED">Необхідне підтвердження</string>
     <string name="select_dialog_title">Обрати MIDlet</string>
-    <string name="crash_dialog_message">Чи ви хочете, надіслати розробнику звіт про помилку?</string>
     <string name="crash_dialog_title">Виявлена помилка</string>
-    <string name="report_crash">Надіслати</string>
     <string name="layout_edit_finished">Режим редагування завершено</string>
     <string name="layout_edit_finish">Завершити режим редагування</string>
     <string name="layout_edit_mode">Режим редагування клавіатури</string>

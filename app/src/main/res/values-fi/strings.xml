@@ -62,9 +62,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Sovelluksen sulkeutuminen voi johtaa tietojen menetykseen tai jopa rikkoa sen kokonaan!\nJatketaanko?</string>
     <string name="CONFIRMATION_REQUIRED">Vahvistus vaaditaan</string>
     <string name="select_dialog_title">Valitse MIDlet</string>
-    <string name="crash_dialog_message">Haluatko lähettää virheilmoituksen kehittäjälle?</string>
     <string name="crash_dialog_title">Havaittiin virhe</string>
-    <string name="report_crash">Lähetä</string>
     <string name="layout_edit_finished">Muokkaustila päättynyt</string>
     <string name="layout_edit_finish">Lopeta muokkaustila</string>
     <string name="layout_edit_mode">Näppäinasettelun editointitila</string>

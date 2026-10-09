@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">¡Forzar el cierre de la aplicación puede resultar en pérdida de datos o incluso dañarla completamente!\n¿Quieres proceder?</string>
     <string name="CONFIRMATION_REQUIRED">Se requiere confirmación</string>
     <string name="select_dialog_title">Seleccionar MIDlet</string>
-    <string name="crash_dialog_message">¿Desea enviar un informe de errores el desarrollador?</string>
     <string name="crash_dialog_title">Error detectado</string>
-    <string name="report_crash">Enviar</string>
     <string name="layout_edit_finished">Modo de edición finalizado</string>
     <string name="layout_edit_finish">Finalizar modo de edición</string>
     <string name="layout_edit_mode">Modo de edición de disposición del teclado</string>

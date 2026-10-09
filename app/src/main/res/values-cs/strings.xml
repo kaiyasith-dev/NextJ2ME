@@ -139,9 +139,7 @@
     <string name="FORCE_CLOSE_CONFIRMATION">Vynucené ukončení aplikace může vést ke ztrátě dat nebo ji dokonce úplně rozbít!\nPokračovat?</string>
     <string name="CONFIRMATION_REQUIRED">Vyžadováno potvrzení</string>
     <string name="select_dialog_title">Vyberte MIDlet</string>
-    <string name="crash_dialog_message">Chcete odeslat hlášení o chybě vývojáři?</string>
     <string name="crash_dialog_title">Byla zjištěna chyba</string>
-    <string name="report_crash">Odeslat</string>
     <string name="layout_edit_finished">Režim úprav ukončen</string>
     <string name="layout_edit_finish">Ukončit režim úprav</string>
     <string name="layout_edit_mode">Režim úpravy rozložení kláves</string>

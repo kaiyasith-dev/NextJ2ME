@@ -128,9 +128,7 @@
     <string name="saved">Αποθηκεύτηκε</string>
     <string name="FORCE_CLOSE_CONFIRMATION">Το αναγκαστικό κλείσιμο της εφαρμογής μπορεί να οδηγήσει σε απώλεια δεδομένων ή και στο να χαλάσει τελείως!\nΘέλετε να συνεχίσετε;</string>
     <string name="select_dialog_title">Επιλογή MIDlet</string>
-    <string name="crash_dialog_message">Θέλετε να στείλετε αναφορά σφάλματος στον δημιουργό της εφαρμογής;</string>
     <string name="crash_dialog_title">Εντοπίστηκε σφάλμα</string>
-    <string name="report_crash">Αποστολή</string>
     <string name="layout_edit_finished">Η λειτουργία επεξεργασίας ολοκληρώθηκε</string>
     <string name="layout_edit_finish">Ολοκλήρωση λειτουργίας επεξεργασίας</string>
     <string name="layout_edit_mode">Λειτουργία επεξεργασίας πληκτρολογίου</string>
