@@ -172,7 +172,7 @@
     <string name="pref_input_devices_title">Input devices</string>
     <string name="pref_graphics_mode_title">Graphics mode:</string>
     <string name="pref_frame_generation_title">Frame generation (experimental):</string>
-    <string name="pref_render_3d_title">3D resolution (Mascot Capsule, experimental):</string>
+    <string name="pref_render_3d_title">3D resolution (Mascot Capsule):</string>
     <string name="pref_render_3d_normal">Normal</string>
     <string name="pref_render_3d_2x">2x (smoother edges)</string>
     <string name="pref_render_3d_3x">3x (smoothest, heavier)</string>

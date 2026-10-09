@@ -93,7 +93,14 @@ public class ShaderInfo implements Comparable<ShaderInfo>, Parcelable {
 		vertex = in.readString();
 		outputResolution = in.readByte() != 0;
 		upscaling = in.readByte() != 0;
-		settings = (Setting[]) in.readParcelableArray(getClass().getClassLoader());
+		// read in the order and the format writeToParcel wrote them
+		Parcelable[] read = in.readParcelableArray(Setting.class.getClassLoader());
+		if (read != null) {
+			for (int i = 0; i < read.length && i < settings.length; i++) {
+				settings[i] = (Setting) read[i];
+			}
+		}
+		values = in.createFloatArray();
 	}
 
 	@Override
@@ -271,7 +278,8 @@ public class ShaderInfo implements Comparable<ShaderInfo>, Parcelable {
 		dest.writeString(vertex);
 		dest.writeByte((byte) (outputResolution ? 1 : 0));
 		dest.writeByte((byte) (upscaling ? 1 : 0));
-		dest.writeArray(settings);
+		dest.writeParcelableArray(settings, flags);
+		dest.writeFloatArray(values);
 	}
 
 	static class Setting implements Parcelable {

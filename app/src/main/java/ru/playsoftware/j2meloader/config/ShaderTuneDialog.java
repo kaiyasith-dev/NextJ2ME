@@ -84,6 +84,9 @@ public class ShaderTuneDialog extends DialogFragment {
 				inflater, parentBinding.container, false);
 
 			seekBars[i] = childBinding.shaderSettingValue;
+			// every slider has the same view id, so Android would restore one slider's position
+			// into all of them; they are set from the shader's values below instead
+			seekBars[i].setSaveEnabled(false);
 			float value = values != null ? values[i] : setting.def;
 			childBinding.shaderSettingName.setText(getString(R.string.shader_setting, setting.name, format.format(value)));
 			if (setting.step <= 0.0f) {

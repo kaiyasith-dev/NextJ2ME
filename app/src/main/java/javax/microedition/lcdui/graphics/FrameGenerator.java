@@ -208,6 +208,18 @@ public final class FrameGenerator {
 		}
 	}
 
+	/**
+	 * Lets go of a generator whose GL context is gone (a new one was made): stops the worker but
+	 * makes no GL calls, since its texture and program numbers may now belong to the new context.
+	 */
+	public void abandon() {
+		if (worker != null) {
+			worker.shutdownNow();
+			worker = null;
+		}
+		allocated = false;
+	}
+
 	/** Frees the textures and the framebuffer, and stops the worker. */
 	private void releaseBuffers() {
 		if (worker != null) {

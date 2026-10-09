@@ -133,6 +133,12 @@ public abstract class Canvas extends Displayable {
 	private static int scaleRatio;
 	private static int fpsLimit;
 	private static int frameGeneration;
+	/**
+	 * Without a new game frame for this long, frame generation stops redrawing on every refresh. It
+	 * is longer than the longest frame time the blend follows (250 ms), so the newest frame is
+	 * already fully shown.
+	 */
+	private static final long FRAME_IDLE_NANOS = 300_000_000L;
 	private static boolean screenshotRawMode;
 	private static int scaleType;
 	private static int screenGravity;
@@ -790,6 +796,8 @@ public abstract class Canvas extends Displayable {
 		private boolean isStarted;
 		/** Draws pictures between the game's frames; null when frame generation is off or failed. */
 		private FrameGenerator frameGenerator;
+		/** Whether the view redraws on every screen refresh (only touched on the GL thread). */
+		private boolean redrawEveryRefresh;
 		private final AtomicInteger frameCounter = new AtomicInteger();
 		private volatile long frameNanos;
 		private int surfaceWidth;
@@ -811,11 +819,15 @@ public abstract class Canvas extends Displayable {
 			}
 			isStarted = true;
 			if (frameGenerator != null) {
-				frameGenerator.shutdown();
+				// a new GL context: the old generator's GL objects went with the old one
+				frameGenerator.abandon();
 			}
 			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration == 2, filter);
 			if (frameGeneration != 0 && frameGenerator == null) {
 				stopFrameGeneration("the device could not build the frame generation shader");
+			} else if (frameGenerator != null) {
+				// also after an earlier failure had switched the redrawing off
+				setRedrawEveryRefresh(true);
 			}
 		}
 
@@ -849,14 +861,22 @@ public abstract class Canvas extends Displayable {
 		 */
 		private boolean drawGeneratedFrame() {
 			Bitmap frame = offscreenCopy.getBitmap();
+			long now = System.nanoTime();
+			long lastFrame = frameNanos;
 			int texture = 0;
 			try {
-				texture = frameGenerator.render(frame, bufferLock, frameCounter.get(), frameNanos,
-						System.nanoTime());
+				texture = frameGenerator.render(frame, bufferLock, frameCounter.get(), lastFrame, now);
 			} catch (RuntimeException e) {
 				Log.e(TAG, "frame generation failed", e);
 			}
 			if (texture != 0) {
+				// A game that stops drawing (paused, a still menu) needs no new pictures: once the
+				// blend has reached its newest frame, wait for the game's next frame (requestRender
+				// wakes the view up) instead of redrawing on every refresh.
+				boolean gameIsDrawing = now - lastFrame < FRAME_IDLE_NANOS;
+				if (gameIsDrawing != redrawEveryRefresh) {
+					setRedrawEveryRefresh(gameIsDrawing);
+				}
 				glViewport(0, 0, surfaceWidth, surfaceHeight);
 				glUseProgram(program.id);
 				synchronized (vbo) {
@@ -881,8 +901,15 @@ public abstract class Canvas extends Displayable {
 				frameGenerator.shutdown();
 				frameGenerator = null;
 			}
+			setRedrawEveryRefresh(false);
+		}
+
+		/** Redraw on every screen refresh, or only when the game finishes a frame. */
+		private void setRedrawEveryRefresh(boolean every) {
+			redrawEveryRefresh = every;
 			if (mView != null) {
-				mView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+				mView.setRenderMode(every ? GLSurfaceView.RENDERMODE_CONTINUOUSLY
+						: GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 			}
 		}
 

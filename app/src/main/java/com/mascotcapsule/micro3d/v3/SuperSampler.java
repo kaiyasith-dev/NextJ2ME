@@ -218,6 +218,8 @@ final class SuperSampler {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
+		// it is drawn into, so it must not stay bound where a draw could read it
+		glBindTexture(GL_TEXTURE_2D, 0);
 
 		glGenRenderbuffers(1, id, 0);
 		depth = id[0];
@@ -325,6 +327,8 @@ final class SuperSampler {
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		glDisableVertexAttribArray(aPosition);
 		glDisableVertexAttribArray(aUv);
+		// the next frame draws into this texture again: reading it at the same time is undefined
+		glBindTexture(GL_TEXTURE_2D, 0);
 
 		glActiveTexture(unit[0]);
 		if (scissor) {
