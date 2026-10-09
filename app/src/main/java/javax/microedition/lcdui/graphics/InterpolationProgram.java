@@ -59,6 +59,13 @@ final class InterpolationProgram {
 	 * hold the motion in frame pixels plus 128. A vector (vx, vy) means: what is at p in the
 	 * previous frame is at p + v in the newest frame. At blend position t, the previous frame is
 	 * sampled at p - v*t and the newest frame at p + v*(1-t).
+	 * <p>
+	 * Each pixel tries a few motions and keeps the one under which the two moved pictures agree best:
+	 * first the motion blended between the centres of the neighbouring blocks (smooth, so blocks do not
+	 * tear apart along their borders), then the motion of each of those four blocks (so a pixel where
+	 * two differently moving areas meet follows its own area instead of being bent). Where even the
+	 * best one disagrees, the motion is wrong there (too fast to follow, or something appeared): those
+	 * pixels fall back to a plain cross-fade, which looks soft instead of torn.
 	 */
 	private static final String FRAGMENT =
 			"#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
@@ -75,17 +82,45 @@ final class InterpolationProgram {
 					+ "uniform vec2 u_blockPx;\n"
 					+ "uniform vec2 u_grid;\n"
 					+ "varying vec2 v_uv;\n"
+					+ "vec4 g_a;\n"
+					+ "vec4 g_b;\n"
+					+ "vec2 blockMotion(vec2 cell) {\n"
+					+ "    vec2 c = clamp(cell, vec2(0.0), u_grid - 1.0);\n"
+					+ "    vec4 m = texture2D(u_motion, (c + 0.5) / u_grid);\n"
+					+ "    return (vec2(m.r, m.a) * 255.0 - 128.0) / u_texSize;\n"
+					+ "}\n"
+					+ "float mismatch(vec2 mv) {\n"
+					+ "    g_a = texture2D(u_prev, v_uv - mv * u_t);\n"
+					+ "    g_b = texture2D(u_curr, v_uv + mv * (1.0 - u_t));\n"
+					+ "    vec3 d = abs(g_a.rgb - g_b.rgb);\n"
+					+ "    return max(max(d.r, d.g), d.b);\n"
+					+ "}\n"
 					+ "void main() {\n"
-					+ "    vec2 mv = vec2(0.0);\n"
-					+ "    if (u_useMotion > 0.5) {\n"
-					+ "        vec2 bi = floor(v_uv * u_texSize / u_blockPx);\n"
-					+ "        vec2 muv = (min(bi, u_grid - 1.0) + 0.5) / u_grid;\n"
-					+ "        vec4 m = texture2D(u_motion, muv);\n"
-					+ "        mv = (vec2(m.r, m.a) * 255.0 - 128.0) / u_texSize;\n"
+					+ "    vec4 plain = mix(texture2D(u_prev, v_uv), texture2D(u_curr, v_uv), u_t);\n"
+					+ "    if (u_useMotion < 0.5) {\n"
+					+ "        gl_FragColor = plain;\n"
+					+ "        return;\n"
 					+ "    }\n"
-					+ "    vec4 a = texture2D(u_prev, v_uv - mv * u_t);\n"
-					+ "    vec4 b = texture2D(u_curr, v_uv + mv * (1.0 - u_t));\n"
-					+ "    gl_FragColor = mix(a, b, u_t);\n"
+					+ "    vec2 p = v_uv * u_texSize / u_blockPx - 0.5;\n"
+					+ "    vec2 i = floor(p);\n"
+					+ "    vec2 f = p - i;\n"
+					+ "    vec2 m00 = blockMotion(i);\n"
+					+ "    vec2 m10 = blockMotion(i + vec2(1.0, 0.0));\n"
+					+ "    vec2 m01 = blockMotion(i + vec2(0.0, 1.0));\n"
+					+ "    vec2 m11 = blockMotion(i + vec2(1.0, 1.0));\n"
+					+ "    float best = mismatch(mix(mix(m00, m10, f.x), mix(m01, m11, f.x), f.y));\n"
+					+ "    vec4 a = g_a;\n"
+					+ "    vec4 b = g_b;\n"
+					+ "    float e = mismatch(m00);\n"
+					+ "    if (e < best - 0.02) { best = e; a = g_a; b = g_b; }\n"
+					+ "    e = mismatch(m10);\n"
+					+ "    if (e < best - 0.02) { best = e; a = g_a; b = g_b; }\n"
+					+ "    e = mismatch(m01);\n"
+					+ "    if (e < best - 0.02) { best = e; a = g_a; b = g_b; }\n"
+					+ "    e = mismatch(m11);\n"
+					+ "    if (e < best - 0.02) { best = e; a = g_a; b = g_b; }\n"
+					+ "    float agree = 1.0 - smoothstep(0.06, 0.2, best);\n"
+					+ "    gl_FragColor = mix(plain, mix(a, b, u_t), agree);\n"
 					+ "}\n";
 
 	final int id;

@@ -90,7 +90,7 @@ public final class FrameGenerator {
 	private static final int BLOCK = 8;
 	private static final int RANGE = 8;
 
-	/** What the worker found out about the motion into a frame. */
+	/** What the worker found out about the motion into a frame (no data: it could not tell). */
 	private static final class Motion {
 		final int generation;
 		final int frame;
@@ -98,14 +98,17 @@ public final class FrameGenerator {
 		final int rows;
 		final byte[] data;
 		final boolean sceneCut;
+		final long readyNanos;
 
-		Motion(int generation, int frame, int cols, int rows, byte[] data, boolean sceneCut) {
+		Motion(int generation, int frame, int cols, int rows, byte[] data, boolean sceneCut,
+			   long readyNanos) {
 			this.generation = generation;
 			this.frame = frame;
 			this.cols = cols;
 			this.rows = rows;
 			this.data = data;
 			this.sceneCut = sceneCut;
+			this.readyNanos = readyNanos;
 		}
 	}
 
@@ -120,13 +123,15 @@ public final class FrameGenerator {
 	private final InterpolationProgram program;
 	private final FloatBuffer quad = ByteBuffer.allocateDirect(16 * 4)
 			.order(ByteOrder.nativeOrder()).asFloatBuffer();
-	private final FrameClock clock = new FrameClock();
 	private final AtomicBoolean busy = new AtomicBoolean();
+	/** The kept game frames: frame n is in frameTex[n % KEPT]. */
+	private final int[] frameTex = new int[FramePacer.KEPT];
+	/** The motion into each kept frame, once the worker has it. */
+	private final Motion[] motions = new Motion[FramePacer.KEPT];
+	private FramePacer pacer = new FramePacer(false);
 
 	private int width;
 	private int height;
-	private int texPrev;
-	private int texCurr;
 	private int texMotion;
 	private int texOut;
 	private int fbo;
@@ -137,7 +142,6 @@ public final class FrameGenerator {
 	private GrayState grayState = new GrayState();
 	private int seenFrame = -1;
 	private int frameIndex;
-	private boolean haveFrame;
 
 	private MotionEstimator estimator;
 	private int[] pixels;
@@ -228,7 +232,7 @@ public final class FrameGenerator {
 		}
 		if (allocated) {
 			try {
-				glDeleteTextures(4, new int[]{texPrev, texCurr, texMotion, texOut}, 0);
+				glDeleteTextures(5, new int[]{frameTex[0], frameTex[1], frameTex[2], texMotion, texOut}, 0);
 				glDeleteFramebuffers(1, new int[]{fbo}, 0);
 			} catch (RuntimeException e) {
 				// the context may already be gone
@@ -243,13 +247,12 @@ public final class FrameGenerator {
 		releaseBuffers();
 		generation++;
 		grayState = new GrayState();
-		int[] ids = new int[4];
-		glGenTextures(4, ids, 0);
-		texPrev = ids[0];
-		texCurr = ids[1];
-		texMotion = ids[2];
-		texOut = ids[3];
-		for (int tex : new int[]{texPrev, texCurr}) {
+		int[] ids = new int[5];
+		glGenTextures(5, ids, 0);
+		System.arraycopy(ids, 0, frameTex, 0, FramePacer.KEPT);
+		texMotion = ids[3];
+		texOut = ids[4];
+		for (int tex : frameTex) {
 			setupTexture(tex, linear);
 		}
 		setupTexture(texMotion, false);
@@ -265,17 +268,17 @@ public final class FrameGenerator {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		if (!complete) {
 			Log.e(TAG, "the off-screen framebuffer is not usable");
-			glDeleteTextures(4, ids, 0);
+			glDeleteTextures(5, ids, 0);
 			glDeleteFramebuffers(1, fb, 0);
 			return false;
 		}
 		width = w;
 		height = h;
 		allocated = true;
-		haveFrame = false;
 		seenFrame = -1;
 		frameIndex = 0;
 		uploadedMotion = -1;
+		java.util.Arrays.fill(motions, null);
 		motion = null;
 		estimator = null;
 		pixels = null;
@@ -295,6 +298,7 @@ public final class FrameGenerator {
 			});
 			busy.set(false);
 		}
+		pacer = new FramePacer(estimator != null);
 		return true;
 	}
 
@@ -310,29 +314,26 @@ public final class FrameGenerator {
 	// ------------------------------------------------------------------ a new game frame
 
 	private void acceptFrame(Bitmap bitmap, Object bufferLock, long frameNanos) {
-		int t = texPrev;
-		texPrev = texCurr;
-		texCurr = t;
-		boolean first = !haveFrame;
 		boolean grab = estimator != null && !busy.get();
+		// the pacer makes sure the frame this one replaces is no longer shown
+		int n = pacer.onFrame(frameNanos, grab);
+		frameIndex = n;
 		glActiveTexture(GL_TEXTURE0);
 		synchronized (bufferLock) {
-			glBindTexture(GL_TEXTURE_2D, texCurr);
+			glBindTexture(GL_TEXTURE_2D, frameTex[n % FramePacer.KEPT]);
 			GLUtils.texImage2D(GL_TEXTURE_2D, 0, bitmap, 0);
-			if (first) {
-				glBindTexture(GL_TEXTURE_2D, texPrev);
+			if (n == 1) {
+				// the first frame is blended from itself
+				glBindTexture(GL_TEXTURE_2D, frameTex[0]);
 				GLUtils.texImage2D(GL_TEXTURE_2D, 0, bitmap, 0);
 			}
 			if (grab) {
 				bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
 			}
 		}
-		haveFrame = true;
-		clock.onFrame(frameNanos);
-		frameIndex++;
 		if (grab) {
 			busy.set(true);
-			startMotionJob(frameIndex);
+			startMotionJob(n);
 		}
 	}
 
@@ -349,12 +350,17 @@ public final class FrameGenerator {
 			try {
 				byte[] gray = MotionEstimator.toGray(px, w, h);
 				// a new picture is only grabbed after this job finished, so nothing else reads it
+				Motion found = null;
 				if (state.gray != null && state.frame == index - 1) {
 					MotionEstimator.Result r = est.estimate(state.gray, gray);
-					motion = new Motion(gen, index, r.cols, r.rows, r.encode(2), r.sceneCut);
+					found = new Motion(gen, index, r.cols, r.rows, r.encode(2), r.sceneCut,
+							System.nanoTime());
 				}
 				state.gray = gray;
 				state.frame = index;
+				// also when nothing was found, so the blend does not wait for it
+				motion = found != null ? found
+						: new Motion(gen, index, 0, 0, null, false, System.nanoTime());
 			} catch (RuntimeException e) {
 				Log.w(TAG, "motion estimation failed", e);
 			} finally {
@@ -366,10 +372,18 @@ public final class FrameGenerator {
 	// ------------------------------------------------------------------ one screen refresh
 
 	private int draw(long nowNanos) {
-		float t = clock.phase(nowNanos);
+		Motion published = motion;
+		if (published != null && published.generation == generation
+				&& published.frame > frameIndex - FramePacer.KEPT
+				&& motions[published.frame % FramePacer.KEPT] != published) {
+			motions[published.frame % FramePacer.KEPT] = published;
+			pacer.onMotionReady(published.frame, published.readyNanos);
+		}
+		int k = pacer.update(nowNanos);
+		float t = pacer.blend();
 		boolean useMotion = false;
-		Motion m = motion;
-		if (m != null && m.generation == generation && m.frame == frameIndex) {
+		Motion m = motions[k % FramePacer.KEPT];
+		if (m != null && m.frame == k && m.data != null) {
 			if (m.sceneCut) {
 				t = 1f; // a different scene: show it as it is
 			} else {
@@ -392,9 +406,9 @@ public final class FrameGenerator {
 		glEnableVertexAttribArray(program.aUv);
 
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texPrev);
+		glBindTexture(GL_TEXTURE_2D, frameTex[(k - 1) % FramePacer.KEPT]);
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, texCurr);
+		glBindTexture(GL_TEXTURE_2D, frameTex[k % FramePacer.KEPT]);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, texMotion);
 		glUniform1i(program.uPrev, 0);

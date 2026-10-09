@@ -17,9 +17,8 @@
 package javax.microedition.lcdui.graphics;
 
 /**
- * Keeps track of how often the game finishes a frame and tells, at any moment, how far the screen
- * should be between the previous and the newest game frame (0 = still the previous one, 1 = the
- * newest). Frame generation shows that blend while it waits for the next game frame.
+ * Keeps track of how often the game finishes a frame: the smoothed time between frames, which
+ * {@link FramePacer} uses to spread each blend over one game frame.
  */
 public final class FrameClock {
 	private static final long MS = 1_000_000L;
@@ -44,18 +43,6 @@ public final class FrameClock {
 			}
 		}
 		arrival = nowNanos;
-	}
-
-	/**
-	 * How far to blend from the previous to the newest game frame at {@code nowNanos}:
-	 * 0 right when a frame arrives, growing to 1 after one expected frame time, then staying at 1.
-	 */
-	public float phase(long nowNanos) {
-		if (arrival == 0) {
-			return 1f;
-		}
-		float p = (float) (nowNanos - arrival) / interval;
-		return p < 0f ? 0f : Math.min(p, 1f);
 	}
 
 	/** The expected time between game frames, in nanoseconds. */

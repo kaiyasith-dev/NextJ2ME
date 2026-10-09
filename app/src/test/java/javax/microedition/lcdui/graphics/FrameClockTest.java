@@ -25,22 +25,6 @@ public class FrameClockTest {
 	private static final long MS = 1_000_000L;
 
 	@Test
-	public void beforeAnyFrameTheNewestFrameIsShown() {
-		assertEquals(1f, new FrameClock().phase(123 * MS), 0f);
-	}
-
-	@Test
-	public void theBlendGrowsFromTheOldFrameToTheNewOneInOneFrameTime() {
-		FrameClock c = new FrameClock();
-		c.onFrame(1000 * MS);
-		c.onFrame(1050 * MS); // a 50 ms game frame time
-		assertEquals(0f, c.phase(1050 * MS), 0f);
-		assertEquals(0.5f, c.phase(1075 * MS), 0.01f);
-		assertEquals(1f, c.phase(1100 * MS), 0.01f);
-		assertEquals("it stays on the newest frame while waiting", 1f, c.phase(1500 * MS), 0f);
-	}
-
-	@Test
 	public void theFrameTimeFollowsTheGameAndIsSmoothed() {
 		FrameClock c = new FrameClock();
 		long t = 0;
@@ -81,10 +65,4 @@ public class FrameClockTest {
 		assertTrue(slow.intervalNanos() <= 250 * MS);
 	}
 
-	@Test
-	public void aTimeBeforeTheFrameCountsAsTheOldFrame() {
-		FrameClock c = new FrameClock();
-		c.onFrame(1000 * MS);
-		assertEquals(0f, c.phase(900 * MS), 0f);
-	}
 }
