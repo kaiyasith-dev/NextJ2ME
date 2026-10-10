@@ -39,6 +39,7 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
@@ -246,6 +247,13 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			public void onNothingSelected(AdapterView<?> parent) {
 			}
 		});
+		explains(binding.frameGenerationHint, R.string.help_frame_generation);
+		explains(binding.frameGenerationFpsHint, R.string.help_frame_generation_fps);
+		explains(binding.frameGenerationMultiCoreLabel, R.string.help_frame_generation_multi_core);
+		explains(binding.frameGenerationCleanEdgesLabel, R.string.help_frame_generation_clean_edges);
+		explains(binding.frameGenerationGpuLabel, R.string.help_frame_generation_gpu);
+		explains(binding.frameGenerationSteadyLabel, R.string.help_frame_generation_steady);
+		explains(binding.render3dHint, R.string.help_render_3d);
 		binding.frameGenerationSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -349,10 +357,23 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.frameGenerationSelector.setVisibility(gles ? View.VISIBLE : View.GONE);
 		binding.frameGenerationFpsHint.setVisibility(gles && on ? View.VISIBLE : View.GONE);
 		binding.frameGenerationFpsSelector.setVisibility(gles && on ? View.VISIBLE : View.GONE);
-		binding.frameGenerationMultiCoreToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
-		binding.frameGenerationCleanEdgesToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
-		binding.frameGenerationGpuToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
-		binding.frameGenerationSteadyToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
+		int motionRows = gles && motion ? View.VISIBLE : View.GONE;
+		for (View v : new View[]{
+				binding.frameGenerationMultiCoreLabel, binding.frameGenerationMultiCoreToggle,
+				binding.frameGenerationCleanEdgesLabel, binding.frameGenerationCleanEdgesToggle,
+				binding.frameGenerationGpuLabel, binding.frameGenerationGpuToggle,
+				binding.frameGenerationSteadyLabel, binding.frameGenerationSteadyToggle}) {
+			v.setVisibility(motionRows);
+		}
+	}
+
+	/** Tapping the label (with its info icon) explains what the option does. */
+	private void explains(TextView label, int help) {
+		label.setOnClickListener(v -> new AlertDialog.Builder(this)
+				.setTitle(label.getText().toString().replaceAll(":\\s*$", ""))
+				.setMessage(help)
+				.setPositiveButton(android.R.string.ok, null)
+				.show());
 	}
 
 	/** The rates of the frame generation rate list, in its order; 0 = the screen's refresh rate. */
