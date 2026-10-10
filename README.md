@@ -58,6 +58,8 @@ For games that cap their own frame rate (for example 20-30 fps), the per-game se
 
 With Motion and Motion HQ, the switch **Clean edges around moving objects** (off by default) also searches the motion backward, from the new frame to the old one. Where the two directions disagree, background is being covered or uncovered by a moving object; those pixels are taken from the one frame where they can be seen, instead of being cross-faded with the object, so moving objects keep clean edges without a halo. It doubles the CPU used for the motion search.
 
+With Motion and Motion HQ, the switch **Search motion on the GPU** (experimental, off by default) moves the motion search from the CPU to the graphics chip: the same steps as Motion HQ's search (quarter-size coarse search, 8x8 blocks refined to a quarter pixel, smoothing), done in OpenGL ES 2.0 shaders, with the result staying on the GPU. It frees the CPU and removes the delay the CPU search adds. If a phone's GPU can not run it, the CPU searches as before.
+
 With Motion and Motion HQ, the switch **Use several CPU cores for motion** (on by default) shares the motion search between up to four cores: the same pictures, worked out two to three times sooner, which lowers the added delay and helps Motion HQ keep up. Switch it off to save battery.
 
 It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.

@@ -104,6 +104,10 @@ public class ProfileModel {
 	@SerializedName("FrameGenerationCleanEdges")
 	public boolean frameGenerationCleanEdges;
 
+	/** Whether frame generation searches the motion with the GPU instead of the CPU. */
+	@SerializedName("FrameGenerationGpu")
+	public boolean frameGenerationGpu;
+
 	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
 	@SerializedName("FrameGenerationFps")
 	public int frameGenerationFps;

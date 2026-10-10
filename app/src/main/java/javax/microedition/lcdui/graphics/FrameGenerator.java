@@ -131,6 +131,12 @@ public final class FrameGenerator {
 	private final int mode;
 	/** Also search the motion backward, to clean the edges next to moving objects. */
 	private final boolean cleanEdges;
+	/** Search the motion with the GPU (falls back to the CPU where that can not be built). */
+	private final boolean gpuSearch;
+	private GpuMotionSearch gpu;
+	/** The frame the GPU last searched the motion into, and whether it was a scene cut. */
+	private int gpuFrame = -1;
+	private boolean gpuSceneCut;
 	private final boolean linear;
 	private final InterpolationProgram program;
 	private final FloatBuffer quad = ByteBuffer.allocateDirect(16 * 4)
@@ -175,10 +181,11 @@ public final class FrameGenerator {
 	private float blockPxY = 1;
 
 	private FrameGenerator(InterpolationProgram program, int mode, boolean linear, boolean multiCore,
-						   boolean cleanEdges) {
+						   boolean cleanEdges, boolean gpuSearch) {
 		this.program = program;
 		this.mode = mode;
 		this.cleanEdges = cleanEdges;
+		this.gpuSearch = gpuSearch;
 		this.parts = multiCore ? searchParts(Runtime.getRuntime().availableProcessors()) : 1;
 		this.linear = linear;
 		// a full-screen quad: clip position then texture position, so the output texture is the
@@ -199,12 +206,13 @@ public final class FrameGenerator {
 	 * @param multiCore  let the motion search use several CPU cores (the same result, sooner)
 	 * @param cleanEdges search the motion both ways too, so edges next to moving objects are taken
 	 *                   from the frame where they can be seen instead of cross-faded (twice the CPU)
+	 * @param gpuSearch  search the motion with the GPU instead of the CPU (where the GPU can)
 	 * @return null if the device can not run the shader, in which case the normal drawing is used
 	 */
 	public static FrameGenerator create(int mode, boolean linear, boolean multiCore,
-										boolean cleanEdges) {
+										boolean cleanEdges, boolean gpuSearch) {
 		InterpolationProgram p = InterpolationProgram.create();
-		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore, cleanEdges);
+		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore, cleanEdges, gpuSearch);
 	}
 
 	/**
@@ -246,12 +254,21 @@ public final class FrameGenerator {
 	 */
 	public void abandon() {
 		stopThreads();
+		gpu = null; // its GL objects went with the old context
 		allocated = false;
 	}
 
 	/** Frees the textures and the framebuffer, and stops the worker. */
 	private void releaseBuffers() {
 		stopThreads();
+		if (gpu != null) {
+			try {
+				gpu.release();
+			} catch (RuntimeException e) {
+				// the context may already be gone
+			}
+			gpu = null;
+		}
 		if (allocated) {
 			try {
 				glDeleteTextures(6, new int[]{frameTex[0], frameTex[1], frameTex[2], texMotion,
@@ -329,8 +346,22 @@ public final class FrameGenerator {
 		pixels = null;
 		motionUnit = 1f;
 		wideSearch = false;
+		gpuFrame = -1;
 		int minSize = 4 * Math.max(BLOCK, FineMotionEstimator.BLOCK);
-		if (mode >= MODE_MOTION && w >= minSize && h >= minSize) {
+		if (mode >= MODE_MOTION && w >= minSize && h >= minSize && gpuSearch) {
+			gpu = GpuMotionSearch.create(w, h);
+			if (gpu == null) {
+				Log.w(TAG, "the GPU can not search the motion here: the CPU does it");
+			}
+		}
+		if (gpu != null) {
+			// the motion stays on the GPU: no worker, nothing to wait for
+			gridCols = gpu.cols();
+			gridRows = gpu.rows();
+			blockPxX = blockPxY = GpuMotionSearch.BLOCK;
+			motionUnit = GpuMotionSearch.UNITS_PER_PIXEL;
+			wideSearch = mode == MODE_MOTION_HQ;
+		} else if (mode >= MODE_MOTION && w >= minSize && h >= minSize) {
 			if (mode == MODE_MOTION_HQ) {
 				fineEstimator = new FineMotionEstimator(w, h);
 				gridCols = fineEstimator.cols();
@@ -399,6 +430,29 @@ public final class FrameGenerator {
 			busy.set(true);
 			startMotionJob(n);
 		}
+		if (gpu != null) {
+			searchOnGpu(n);
+		}
+	}
+
+	/** Searches the motion into frame {@code n} on the GPU, right away. */
+	private void searchOnGpu(int n) {
+		try {
+			int slot = n % FramePacer.KEPT;
+			gpu.addFrame(slot, frameTex[slot]);
+			if (n == 1) {
+				gpu.addFrame(0, frameTex[0]); // the first frame is blended from itself
+				return;
+			}
+			int prev = (n - 1) % FramePacer.KEPT;
+			gpuSceneCut = gpu.search(prev, frameTex[prev], slot, frameTex[slot], cleanEdges);
+			gpuFrame = n;
+		} catch (RuntimeException e) {
+			Log.w(TAG, "the GPU motion search failed: frames are only blended now", e);
+			gpu.release();
+			gpu = null;
+			gpuFrame = -1;
+		}
 	}
 
 	/** Hands the picture grabbed under the lock to the worker, which finds the motion into it. */
@@ -466,7 +520,16 @@ public final class FrameGenerator {
 		boolean useMotion = false;
 		boolean useBack = false;
 		Motion m = motions[k % FramePacer.KEPT];
-		if (m != null && m.frame == k && m.data != null) {
+		if (gpu != null) {
+			if (gpuFrame == k) {
+				if (gpuSceneCut) {
+					t = 1f; // a different scene: show it as it is
+				} else {
+					useMotion = true;
+					useBack = cleanEdges;
+				}
+			}
+		} else if (m != null && m.frame == k && m.data != null) {
 			if (m.sceneCut) {
 				t = 1f; // a different scene: show it as it is
 			} else {
@@ -494,9 +557,9 @@ public final class FrameGenerator {
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, frameTex[k % FramePacer.KEPT]);
 		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, texMotion);
+		glBindTexture(GL_TEXTURE_2D, gpu != null ? gpu.forwardTexture() : texMotion);
 		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, texMotionBack);
+		glBindTexture(GL_TEXTURE_2D, gpu != null ? gpu.backwardTexture() : texMotionBack);
 		glUniform1i(program.uPrev, 0);
 		glUniform1i(program.uCurr, 1);
 		glUniform1i(program.uMotion, 2);

@@ -490,6 +490,19 @@
                 app:layout_constraintTop_toBottomOf="@+id/frame_generation_multi_core_toggle"
                 tools:visibility="visible" />
 
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/frame_generation_gpu_toggle"
+                style="@style/SwitchStyle"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/height_config_row"
+                android:checked="false"
+                android:text="@string/pref_frame_generation_gpu"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/frame_generation_clean_edges_toggle"
+                tools:visibility="visible" />
+
             <TextView
                 android:id="@+id/render_3d_hint"
                 android:layout_width="0dp"
@@ -502,7 +515,7 @@
                 android:textSize="15sp"
                 app:layout_constraintEnd_toStartOf="@+id/barrier_screen_config"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/frame_generation_clean_edges_toggle"
+                app:layout_constraintTop_toBottomOf="@+id/frame_generation_gpu_toggle"
                 app:layout_constraintWidth_min="wrap" />
 
             <Spinner
@@ -516,7 +529,7 @@
                 android:textSize="15sp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toEndOf="@+id/barrier_screen_config"
-                app:layout_constraintTop_toBottomOf="@+id/frame_generation_clean_edges_toggle" />
+                app:layout_constraintTop_toBottomOf="@+id/frame_generation_gpu_toggle" />
 
             <androidx.constraintlayout.widget.Barrier
                 android:id="@+id/barrier_screen_config"
