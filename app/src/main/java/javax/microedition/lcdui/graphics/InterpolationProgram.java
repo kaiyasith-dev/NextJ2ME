@@ -67,6 +67,13 @@ final class InterpolationProgram {
 	 * {@code u_wide} also the twelve blocks around those. Where even the
 	 * best one disagrees, the motion is wrong there (too fast to follow, or something appeared): those
 	 * pixels fall back to a plain cross-fade, which looks soft instead of torn.
+	 * <p>
+	 * With {@code u_cleanEdges}, such a pixel is first checked for being next to a moving object,
+	 * using the motion both ways ({@code u_motion}: old to new, on the new frame's blocks;
+	 * {@code u_motionBack}: new to old, on the old frame's blocks). Background the object uncovers
+	 * exists only in the new frame: the place it comes from in the old frame tells a different
+	 * story. Background the object covers exists only in the old frame. Such pixels are taken from
+	 * the one frame where they can be seen, instead of being cross-faded with the object.
 	 */
 	private static final String FRAGMENT =
 			"#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
@@ -77,10 +84,12 @@ final class InterpolationProgram {
 					+ "uniform sampler2D u_prev;\n"
 					+ "uniform sampler2D u_curr;\n"
 					+ "uniform sampler2D u_motion;\n"
+					+ "uniform sampler2D u_motionBack;\n"
 					+ "uniform float u_t;\n"
 					+ "uniform float u_useMotion;\n"
 					+ "uniform float u_motionUnit;\n"
 					+ "uniform float u_wide;\n"
+					+ "uniform float u_cleanEdges;\n"
 					+ "uniform vec2 u_texSize;\n"
 					+ "uniform vec2 u_blockPx;\n"
 					+ "uniform vec2 u_grid;\n"
@@ -90,10 +99,24 @@ final class InterpolationProgram {
 					+ "float g_best;\n"
 					+ "vec4 g_bestA;\n"
 					+ "vec4 g_bestB;\n"
+					+ "vec2 decode(vec4 m) {\n"
+					+ "    return (vec2(m.r, m.a) * 255.0 - 128.0) / u_motionUnit / u_texSize;\n"
+					+ "}\n"
 					+ "vec2 blockMotion(vec2 cell) {\n"
 					+ "    vec2 c = clamp(cell, vec2(0.0), u_grid - 1.0);\n"
-					+ "    vec4 m = texture2D(u_motion, (c + 0.5) / u_grid);\n"
-					+ "    return (vec2(m.r, m.a) * 255.0 - 128.0) / u_motionUnit / u_texSize;\n"
+					+ "    return decode(texture2D(u_motion, (c + 0.5) / u_grid));\n"
+					+ "}\n"
+					+ "vec2 cellAt(vec2 uv) {\n"
+					+ "    return clamp(floor(uv * u_texSize / u_blockPx), vec2(0.0), u_grid - 1.0);\n"
+					+ "}\n"
+					+ "vec2 newMotionAt(vec2 uv) {\n"
+					+ "    return decode(texture2D(u_motion, (cellAt(uv) + 0.5) / u_grid));\n"
+					+ "}\n"
+					+ "vec2 oldMotionAt(vec2 uv) {\n"
+					+ "    return -decode(texture2D(u_motionBack, (cellAt(uv) + 0.5) / u_grid));\n"
+					+ "}\n"
+					+ "float pixels(vec2 d) {\n"
+					+ "    return length(d * u_texSize);\n"
 					+ "}\n"
 					+ "float mismatch(vec2 mv) {\n"
 					+ "    g_a = texture2D(u_prev, v_uv - mv * u_t);\n"
@@ -144,7 +167,23 @@ final class InterpolationProgram {
 					+ "        tryBlock(i + vec2(2.0, 2.0));\n"
 					+ "    }\n"
 					+ "    float agree = 1.0 - smoothstep(0.06, 0.2, g_best);\n"
-					+ "    gl_FragColor = mix(plain, mix(g_bestA, g_bestB, u_t), agree);\n"
+					+ "    vec4 fallback = plain;\n"
+					+ "    if (u_cleanEdges > 0.5 && agree < 0.999) {\n"
+					+ "        vec2 mn = newMotionAt(v_uv);\n"
+					+ "        vec2 pn = v_uv + mn * (1.0 - u_t);\n"
+					+ "        vec2 fn = newMotionAt(pn);\n"
+					+ "        bool uncovered = pixels(fn - oldMotionAt(pn - fn)) > 2.5;\n"
+					+ "        vec2 mo = oldMotionAt(v_uv);\n"
+					+ "        vec2 po = v_uv - mo * u_t;\n"
+					+ "        vec2 fo = oldMotionAt(po);\n"
+					+ "        bool covered = pixels(fo - newMotionAt(po + fo)) > 2.5;\n"
+					+ "        if (uncovered && !covered) {\n"
+					+ "            fallback = texture2D(u_curr, pn);\n"
+					+ "        } else if (covered && !uncovered) {\n"
+					+ "            fallback = texture2D(u_prev, po);\n"
+					+ "        }\n"
+					+ "    }\n"
+					+ "    gl_FragColor = mix(fallback, mix(g_bestA, g_bestB, u_t), agree);\n"
 					+ "}\n";
 
 	final int id;
@@ -153,6 +192,8 @@ final class InterpolationProgram {
 	final int uPrev;
 	final int uCurr;
 	final int uMotion;
+	final int uMotionBack;
+	final int uCleanEdges;
 	final int uT;
 	final int uUseMotion;
 	final int uMotionUnit;
@@ -168,6 +209,8 @@ final class InterpolationProgram {
 		uPrev = glGetUniformLocation(id, "u_prev");
 		uCurr = glGetUniformLocation(id, "u_curr");
 		uMotion = glGetUniformLocation(id, "u_motion");
+		uMotionBack = glGetUniformLocation(id, "u_motionBack");
+		uCleanEdges = glGetUniformLocation(id, "u_cleanEdges");
 		uT = glGetUniformLocation(id, "u_t");
 		uUseMotion = glGetUniformLocation(id, "u_useMotion");
 		uMotionUnit = glGetUniformLocation(id, "u_motionUnit");

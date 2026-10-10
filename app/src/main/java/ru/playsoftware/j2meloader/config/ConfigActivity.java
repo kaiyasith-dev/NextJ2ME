@@ -350,6 +350,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.frameGenerationFpsHint.setVisibility(gles && on ? View.VISIBLE : View.GONE);
 		binding.frameGenerationFpsSelector.setVisibility(gles && on ? View.VISIBLE : View.GONE);
 		binding.frameGenerationMultiCoreToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
+		binding.frameGenerationCleanEdgesToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
 	}
 
 	/** The rates of the frame generation rate list, in its order; 0 = the screen's refresh rate. */
@@ -636,6 +637,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.fpsLimit.setText(fpsLimit > 0 ? Integer.toString(fpsLimit) : "");
 		binding.frameGenerationSelector.setSelection(params.frameGeneration);
 		binding.frameGenerationMultiCoreToggle.setChecked(params.frameGenerationMultiCore);
+		binding.frameGenerationCleanEdgesToggle.setChecked(params.frameGenerationCleanEdges);
 		binding.frameGenerationFpsSelector.setSelection(frameGenerationFpsPosition(params.frameGenerationFps));
 		binding.render3dQualitySelector.setSelection(params.render3dQuality);
 
@@ -693,6 +695,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			params.fpsLimit = parseInt(binding.fpsLimit.getText().toString());
 		params.frameGeneration = mode == 1 ? binding.frameGenerationSelector.getSelectedItemPosition() : 0;
 		params.frameGenerationMultiCore = binding.frameGenerationMultiCoreToggle.isChecked();
+		params.frameGenerationCleanEdges = binding.frameGenerationCleanEdgesToggle.isChecked();
 		params.frameGenerationFps = FRAME_GENERATION_FPS[Math.max(0,
 				binding.frameGenerationFpsSelector.getSelectedItemPosition())];
 		params.render3dQuality = binding.render3dQualitySelector.getSelectedItemPosition();

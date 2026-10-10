@@ -28,6 +28,7 @@ import static android.opengl.GLES20.GL_RGBA;
 import static android.opengl.GLES20.GL_TEXTURE0;
 import static android.opengl.GLES20.GL_TEXTURE1;
 import static android.opengl.GLES20.GL_TEXTURE2;
+import static android.opengl.GLES20.GL_TEXTURE3;
 import static android.opengl.GLES20.GL_TEXTURE_2D;
 import static android.opengl.GLES20.GL_TEXTURE_MAG_FILTER;
 import static android.opengl.GLES20.GL_TEXTURE_MIN_FILTER;
@@ -103,16 +104,19 @@ public final class FrameGenerator {
 		final int cols;
 		final int rows;
 		final byte[] data;
+		/** The motion the other way (new to old frame), when edges are cleaned; else null. */
+		final byte[] dataBack;
 		final boolean sceneCut;
 		final long readyNanos;
 
-		Motion(int generation, int frame, int cols, int rows, byte[] data, boolean sceneCut,
-			   long readyNanos) {
+		Motion(int generation, int frame, int cols, int rows, byte[] data, byte[] dataBack,
+			   boolean sceneCut, long readyNanos) {
 			this.generation = generation;
 			this.frame = frame;
 			this.cols = cols;
 			this.rows = rows;
 			this.data = data;
+			this.dataBack = dataBack;
 			this.sceneCut = sceneCut;
 			this.readyNanos = readyNanos;
 		}
@@ -125,6 +129,8 @@ public final class FrameGenerator {
 	}
 
 	private final int mode;
+	/** Also search the motion backward, to clean the edges next to moving objects. */
+	private final boolean cleanEdges;
 	private final boolean linear;
 	private final InterpolationProgram program;
 	private final FloatBuffer quad = ByteBuffer.allocateDirect(16 * 4)
@@ -139,6 +145,7 @@ public final class FrameGenerator {
 	private int width;
 	private int height;
 	private int texMotion;
+	private int texMotionBack;
 	private int texOut;
 	private int fbo;
 	private boolean allocated;
@@ -167,9 +174,11 @@ public final class FrameGenerator {
 	private float blockPxX = 1;
 	private float blockPxY = 1;
 
-	private FrameGenerator(InterpolationProgram program, int mode, boolean linear, boolean multiCore) {
+	private FrameGenerator(InterpolationProgram program, int mode, boolean linear, boolean multiCore,
+						   boolean cleanEdges) {
 		this.program = program;
 		this.mode = mode;
+		this.cleanEdges = cleanEdges;
 		this.parts = multiCore ? searchParts(Runtime.getRuntime().availableProcessors()) : 1;
 		this.linear = linear;
 		// a full-screen quad: clip position then texture position, so the output texture is the
@@ -188,11 +197,14 @@ public final class FrameGenerator {
 	 * @param mode      {@link #MODE_BLEND}, {@link #MODE_MOTION} or {@link #MODE_MOTION_HQ}
 	 * @param linear    filter the textures smoothly (the screen's filtering setting)
 	 * @param multiCore  let the motion search use several CPU cores (the same result, sooner)
+	 * @param cleanEdges search the motion both ways too, so edges next to moving objects are taken
+	 *                   from the frame where they can be seen instead of cross-faded (twice the CPU)
 	 * @return null if the device can not run the shader, in which case the normal drawing is used
 	 */
-	public static FrameGenerator create(int mode, boolean linear, boolean multiCore) {
+	public static FrameGenerator create(int mode, boolean linear, boolean multiCore,
+										boolean cleanEdges) {
 		InterpolationProgram p = InterpolationProgram.create();
-		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore);
+		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore, cleanEdges);
 	}
 
 	/**
@@ -242,7 +254,8 @@ public final class FrameGenerator {
 		stopThreads();
 		if (allocated) {
 			try {
-				glDeleteTextures(5, new int[]{frameTex[0], frameTex[1], frameTex[2], texMotion, texOut}, 0);
+				glDeleteTextures(6, new int[]{frameTex[0], frameTex[1], frameTex[2], texMotion,
+						texMotionBack, texOut}, 0);
 				glDeleteFramebuffers(1, new int[]{fbo}, 0);
 			} catch (RuntimeException e) {
 				// the context may already be gone
@@ -276,15 +289,17 @@ public final class FrameGenerator {
 		releaseBuffers();
 		generation++;
 		grayState = new GrayState();
-		int[] ids = new int[5];
-		glGenTextures(5, ids, 0);
+		int[] ids = new int[6];
+		glGenTextures(6, ids, 0);
 		System.arraycopy(ids, 0, frameTex, 0, FramePacer.KEPT);
 		texMotion = ids[3];
-		texOut = ids[4];
+		texMotionBack = ids[4];
+		texOut = ids[5];
 		for (int tex : frameTex) {
 			setupTexture(tex, linear);
 		}
 		setupTexture(texMotion, false);
+		setupTexture(texMotionBack, false);
 		setupTexture(texOut, linear);
 		glBindTexture(GL_TEXTURE_2D, texOut);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
@@ -297,7 +312,7 @@ public final class FrameGenerator {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		if (!complete) {
 			Log.e(TAG, "the off-screen framebuffer is not usable");
-			glDeleteTextures(5, ids, 0);
+			glDeleteTextures(6, ids, 0);
 			glDeleteFramebuffers(1, fb, 0);
 			return false;
 		}
@@ -398,6 +413,7 @@ public final class FrameGenerator {
 		final int bands = parts;
 		final GrayState state = grayState;
 		final int gen = generation;
+		final boolean bothWays = cleanEdges;
 		executor.execute(() -> {
 			try {
 				byte[] gray = fine != null ? FineMotionEstimator.toGray(px, w, h)
@@ -409,14 +425,22 @@ public final class FrameGenerator {
 							: est.estimate(state.gray, gray, pool, bands);
 					// the fine vectors are already in the texture's steps; the normal ones are in
 					// half-size pixels, two frame pixels each
-					found = new Motion(gen, index, r.cols, r.rows, r.encode(fine != null ? 1 : 2),
+					int scale = fine != null ? 1 : 2;
+					byte[] back = null;
+					if (bothWays && !r.sceneCut) {
+						// the same search with the frames swapped: new to old, on the old frame's blocks
+						MotionEstimator.Result b = fine != null ? fine.estimate(gray, state.gray, pool, bands)
+								: est.estimate(gray, state.gray, pool, bands);
+						back = b.encode(scale);
+					}
+					found = new Motion(gen, index, r.cols, r.rows, r.encode(scale), back,
 							r.sceneCut, System.nanoTime());
 				}
 				state.gray = gray;
 				state.frame = index;
 				// also when nothing was found, so the blend does not wait for it
 				motion = found != null ? found
-						: new Motion(gen, index, 0, 0, null, false, System.nanoTime());
+						: new Motion(gen, index, 0, 0, null, null, false, System.nanoTime());
 			} catch (java.util.concurrent.CancellationException e) {
 				// the generator is shutting down
 			} catch (RuntimeException e) {
@@ -440,6 +464,7 @@ public final class FrameGenerator {
 		int k = pacer.update(nowNanos);
 		float t = pacer.blend();
 		boolean useMotion = false;
+		boolean useBack = false;
 		Motion m = motions[k % FramePacer.KEPT];
 		if (m != null && m.frame == k && m.data != null) {
 			if (m.sceneCut) {
@@ -449,6 +474,7 @@ public final class FrameGenerator {
 					uploadMotion(m);
 				}
 				useMotion = true;
+				useBack = m.dataBack != null;
 			}
 		}
 
@@ -469,9 +495,13 @@ public final class FrameGenerator {
 		glBindTexture(GL_TEXTURE_2D, frameTex[k % FramePacer.KEPT]);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, texMotion);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, texMotionBack);
 		glUniform1i(program.uPrev, 0);
 		glUniform1i(program.uCurr, 1);
 		glUniform1i(program.uMotion, 2);
+		glUniform1i(program.uMotionBack, 3);
+		glUniform1f(program.uCleanEdges, useBack ? 1f : 0f);
 		glUniform1f(program.uT, t);
 		glUniform1f(program.uUseMotion, useMotion ? 1f : 0f);
 		glUniform1f(program.uMotionUnit, motionUnit);
@@ -489,17 +519,24 @@ public final class FrameGenerator {
 	}
 
 	private void uploadMotion(Motion m) {
-		ByteBuffer buf = ByteBuffer.allocateDirect(m.data.length);
-		buf.put(m.data).position(0);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, texMotion);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, m.cols, m.rows, 0,
-				GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, buf);
+		uploadVectors(GL_TEXTURE2, texMotion, m.data, m.cols, m.rows);
+		if (m.dataBack != null) {
+			uploadVectors(GL_TEXTURE3, texMotionBack, m.dataBack, m.cols, m.rows);
+		}
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 		glActiveTexture(GL_TEXTURE0);
 		gridCols = m.cols;
 		gridRows = m.rows;
 		uploadedMotion = m.frame;
+	}
+
+	private static void uploadVectors(int unit, int texture, byte[] data, int cols, int rows) {
+		ByteBuffer buf = ByteBuffer.allocateDirect(data.length);
+		buf.put(data).position(0);
+		glActiveTexture(unit);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, cols, rows, 0,
+				GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, buf);
 	}
 }

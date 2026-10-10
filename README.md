@@ -56,6 +56,8 @@ For games that cap their own frame rate (for example 20-30 fps), the per-game se
 
 **Frame generation rate** sets how many pictures per second are shown: the screen's refresh rate (the default), or 60, 90 or 120 fps. 90 and 120 fps ask Android to run the screen that fast, on phones whose screens can (otherwise it draws as fast as the screen goes). A rate that does not divide the screen's rate, such as 90 fps on a 120 Hz screen, is shown as evenly as the screen allows.
 
+With Motion and Motion HQ, the switch **Clean edges around moving objects** (off by default) also searches the motion backward, from the new frame to the old one. Where the two directions disagree, background is being covered or uncovered by a moving object; those pixels are taken from the one frame where they can be seen, instead of being cross-faded with the object, so moving objects keep clean edges without a halo. It doubles the CPU used for the motion search.
+
 With Motion and Motion HQ, the switch **Use several CPU cores for motion** (on by default) shares the motion search between up to four cores: the same pictures, worked out two to three times sooner, which lowers the added delay and helps Motion HQ keep up. Switch it off to save battery.
 
 It needs the graphics mode **HW acceleration (OpenGL ES)** (the default) and adds about one game frame of delay. If the device cannot run it, the game falls back to normal drawing.

@@ -100,6 +100,10 @@ public class ProfileModel {
 	@SerializedName("FrameGenerationMultiCore")
 	public boolean frameGenerationMultiCore = true;
 
+	/** Whether frame generation also searches the motion backward, to clean edges next to moving objects. */
+	@SerializedName("FrameGenerationCleanEdges")
+	public boolean frameGenerationCleanEdges;
+
 	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
 	@SerializedName("FrameGenerationFps")
 	public int frameGenerationFps;

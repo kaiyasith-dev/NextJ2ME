@@ -135,6 +135,7 @@ public abstract class Canvas extends Displayable {
 	private static int fpsLimit;
 	private static int frameGeneration;
 	private static boolean frameGenerationMultiCore = true;
+	private static boolean frameGenerationCleanEdges;
 	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
 	private static int frameGenerationFps;
 	/**
@@ -249,6 +250,11 @@ public abstract class Canvas extends Displayable {
 	/** Whether the motion search of frame generation may use several CPU cores. */
 	public static void setFrameGenerationMultiCore(boolean multiCore) {
 		Canvas.frameGenerationMultiCore = multiCore;
+	}
+
+	/** Whether frame generation also searches the motion backward, to clean edges next to moving objects. */
+	public static void setFrameGenerationCleanEdges(boolean cleanEdges) {
+		Canvas.frameGenerationCleanEdges = cleanEdges;
 	}
 
 	/**
@@ -850,7 +856,7 @@ public abstract class Canvas extends Displayable {
 				frameGenerator.abandon();
 			}
 			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration, filter,
-					frameGenerationMultiCore);
+					frameGenerationMultiCore, frameGenerationCleanEdges);
 			if (frameGeneration != 0 && frameGenerator == null) {
 				stopFrameGeneration("the device could not build the frame generation shader");
 			} else if (frameGenerator != null) {
