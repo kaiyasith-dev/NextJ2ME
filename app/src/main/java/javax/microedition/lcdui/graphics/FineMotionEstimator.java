@@ -101,21 +101,34 @@ public final class FineMotionEstimator {
 	 * between this thread and {@code helpers} in up to {@code parts} bands. The result is the same.
 	 */
 	public MotionEstimator.Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts) {
+		return estimate(prev, curr, helpers, parts, null);
+	}
+
+	/**
+	 * Like {@link #estimate(byte[], byte[], ExecutorService, int)}, with the motion found into the
+	 * previous frame ({@code previous}, the same blocks in quarter pixels, or null) as one more guess
+	 * to refine for each block: things usually keep moving the same way, which keeps the motion from
+	 * jumping between frames and follows steady motion even beyond the coarse search. A block that
+	 * keeps that motion only has to fit as well as staying put, not 10% better.
+	 */
+	public MotionEstimator.Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts,
+										   int[] previous) {
+		final int[] last = previous != null && previous.length == cols * rows * 2 ? previous : null;
 		MotionEstimator.Result rough = coarse.estimate(quarter(prev), quarter(curr), helpers, parts);
 		int[] vectors = new int[cols * rows * 2];
 		if (rough.sceneCut) {
 			return new MotionEstimator.Result(cols, rows, vectors, true, rough.meanError);
 		}
-		RowBands.run(rows, helpers, parts, (from, to) -> refine(prev, curr, rough, from, to, vectors));
+		RowBands.run(rows, helpers, parts, (from, to) -> refine(prev, curr, rough, last, from, to, vectors));
 		median(vectors);
 		return new MotionEstimator.Result(cols, rows, vectors, false, rough.meanError);
 	}
 
 	/** Refines the blocks of rows {@code fromRow} to {@code toRow}; touches only those rows' entries. */
-	private void refine(byte[] prev, byte[] curr, MotionEstimator.Result rough, int fromRow, int toRow,
-						int[] vectors) {
-		int[] guessX = new int[6];
-		int[] guessY = new int[6];
+	private void refine(byte[] prev, byte[] curr, MotionEstimator.Result rough, int[] previous,
+						int fromRow, int toRow, int[] vectors) {
+		int[] guessX = new int[7];
+		int[] guessY = new int[7];
 		for (int by = fromRow; by < toRow; by++) {
 			for (int bx = 0; bx < cols; bx++) {
 				int x0 = bx * BLOCK;
@@ -131,6 +144,20 @@ public final class FineMotionEstimator {
 				int guesses = 0;
 				guessX[guesses] = 0;
 				guessY[guesses++] = 0;
+				// the motion this place had in the previous frame (in whole pixels; refined below)
+				int lastX = 0;
+				int lastY = 0;
+				boolean steady = false;
+				if (previous != null) {
+					int p = (by * cols + bx) * 2;
+					lastX = -Math.round(previous[p] / (float) UNITS_PER_PIXEL);
+					lastY = -Math.round(previous[p + 1] / (float) UNITS_PER_PIXEL);
+					steady = lastX != 0 || lastY != 0;
+					if (steady) {
+						guessX[guesses] = lastX;
+						guessY[guesses++] = lastY;
+					}
+				}
 				int cx = Math.min((x0 + BLOCK / 2) / (4 * COARSE_BLOCK), rough.cols - 1);
 				int cy = Math.min((y0 + BLOCK / 2) / (4 * COARSE_BLOCK), rough.rows - 1);
 				for (int k = 0; k < 5; k++) {
@@ -179,7 +206,8 @@ public final class FineMotionEstimator {
 						}
 					}
 				}
-				if ((bestDx != 0 || bestDy != 0) && bestSad > zero * GAIN) {
+				boolean kept = steady && Math.abs(bestDx - lastX) <= REFINE && Math.abs(bestDy - lastY) <= REFINE;
+				if ((bestDx != 0 || bestDy != 0) && bestSad > zero * GAIN && !(kept && bestSad <= zero)) {
 					continue; // moving is not clearly better than staying put
 				}
 				// to a quarter pixel: the lowest point of a parabola through the neighbouring costs

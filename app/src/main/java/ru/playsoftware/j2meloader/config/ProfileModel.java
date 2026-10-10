@@ -108,6 +108,10 @@ public class ProfileModel {
 	@SerializedName("FrameGenerationGpu")
 	public boolean frameGenerationGpu;
 
+	/** Whether frame generation offers the motion of the previous frame as a guess (steady motion). */
+	@SerializedName("FrameGenerationSteady")
+	public boolean frameGenerationSteady;
+
 	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
 	@SerializedName("FrameGenerationFps")
 	public int frameGenerationFps;

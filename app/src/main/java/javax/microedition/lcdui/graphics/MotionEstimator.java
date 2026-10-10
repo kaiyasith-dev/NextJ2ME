@@ -132,10 +132,27 @@ public final class MotionEstimator {
 	 * and {@code helpers} in up to {@code parts} bands. The result is the same.
 	 */
 	public Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts) {
+		return estimate(prev, curr, helpers, parts, null);
+	}
+
+	/**
+	 * Like {@link #estimate(byte[], byte[], ExecutorService, int)}, with the motion found into the
+	 * previous frame ({@code previous}, the same blocks, or null) as an extra guess for each block:
+	 * things usually keep moving the same way. A block takes it if it fits about as well as staying
+	 * put, and among motions that fit equally it prefers the one closest to it, so the motion does
+	 * not jump between frames on flat or repeating pictures; it is also tried when it lies outside
+	 * the search range. Where it no longer fits (something turned or stopped) it loses to the search.
+	 */
+	public Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts, int[] previous) {
+		if (previous != null && previous.length != cols * rows * 2) {
+			previous = null; // a different size: of no use
+		}
+		final int[] guesses = previous;
 		int[] vectors = new int[cols * rows * 2];
 		long[] bestPerRow = new long[rows];
 		long[] zeroPerRow = new long[rows];
-		RowBands.run(rows, helpers, parts, (from, to) -> search(prev, curr, from, to, vectors, bestPerRow, zeroPerRow));
+		RowBands.run(rows, helpers, parts,
+				(from, to) -> search(prev, curr, from, to, vectors, bestPerRow, zeroPerRow, guesses));
 		long totalBest = 0;
 		long totalZero = 0;
 		for (int by = 0; by < rows; by++) {
@@ -153,9 +170,65 @@ public final class MotionEstimator {
 		return new Result(cols, rows, vectors, sceneCut, meanError);
 	}
 
+	/** The best match of one block so far, and the guess from the previous frame. */
+	private static final class Match {
+		int zero;
+		int limit;
+		int bestCost;
+		int best;
+		int bestDx;
+		int bestDy;
+		boolean steady;
+		int guessDx;
+		int guessDy;
+
+		void reset(int zero, int[] previous, int i) {
+			this.zero = zero;
+			this.limit = (int) (zero * GAIN);
+			bestCost = zero;
+			best = zero;
+			bestDx = 0;
+			bestDy = 0;
+			// the search looks for where a block came from: the opposite of its motion
+			guessDx = previous == null ? 0 : -previous[i];
+			guessDy = previous == null ? 0 : -previous[i + 1];
+			steady = guessDx != 0 || guessDy != 0;
+		}
+
+		/** Whether (dx, dy) is the guess or right next to it. */
+		boolean nearGuess(int dx, int dy) {
+			return steady && Math.abs(dx - guessDx) + Math.abs(dy - guessDy) <= 1;
+		}
+
+		/** The displacement that costs: from staying put, or from the guess if that is closer. */
+		int distance(int dx, int dy) {
+			int d = Math.abs(dx) + Math.abs(dy);
+			return steady ? Math.min(d, Math.abs(dx - guessDx) + Math.abs(dy - guessDy)) : d;
+		}
+	}
+
+	private void consider(Match m, byte[] prev, byte[] curr, int x0, int y0, int x1, int y1, int dx, int dy) {
+		int penalty = PENALTY_PER_PIXEL * m.distance(dx, dy);
+		// a move must beat staying put by 10%; keeping the motion of the previous frame only has to
+		// tie with it
+		int limit = m.nearGuess(dx, dy) ? m.zero + 1 : m.limit;
+		int cap = Math.min(m.bestCost, limit) - penalty;
+		if (cap <= 0) {
+			return;
+		}
+		int s = sad(prev, curr, x0, y0, x1, y1, dx, dy, cap);
+		if (s < cap && s + penalty < m.bestCost) {
+			m.bestCost = s + penalty;
+			m.best = s;
+			m.bestDx = dx;
+			m.bestDy = dy;
+		}
+	}
+
 	/** Searches the blocks of rows {@code fromRow} to {@code toRow}; touches only those rows' entries. */
 	private void search(byte[] prev, byte[] curr, int fromRow, int toRow, int[] vectors,
-						long[] bestPerRow, long[] zeroPerRow) {
+						long[] bestPerRow, long[] zeroPerRow, int[] previous) {
+		Match m = new Match();
 		for (int by = fromRow; by < toRow; by++) {
 			long rowBest = 0;
 			long rowZero = 0;
@@ -165,42 +238,38 @@ public final class MotionEstimator {
 				int x1 = Math.min(x0 + block, width);
 				int y1 = Math.min(y0 + block, height);
 				int zero = sad(prev, curr, x0, y0, x1, y1, 0, 0, Integer.MAX_VALUE);
-				int best = zero;
-				int bestDx = 0;
-				int bestDy = 0;
+				int i = (by * cols + bx) * 2;
+				m.reset(zero, previous, i);
 				if (zero > 0) {
-					int bestCost = zero;
 					int minDx = Math.max(-range, -x0);
 					int maxDx = Math.min(range, width - x1);
 					int minDy = Math.max(-range, -y0);
 					int maxDy = Math.min(range, height - y1);
-					int limit = (int) (zero * GAIN);
 					for (int dy = minDy; dy <= maxDy; dy++) {
 						for (int dx = minDx; dx <= maxDx; dx++) {
-							if (dx == 0 && dy == 0) {
-								continue;
+							if (dx != 0 || dy != 0) {
+								consider(m, prev, curr, x0, y0, x1, y1, dx, dy);
 							}
-							int penalty = PENALTY_PER_PIXEL * (Math.abs(dx) + Math.abs(dy));
-							int cap = Math.min(bestCost, limit) - penalty;
-							if (cap <= 0) {
-								continue;
-							}
-							int s = sad(prev, curr, x0, y0, x1, y1, dx, dy, cap);
-							if (s < cap && s + penalty < bestCost) {
-								bestCost = s + penalty;
-								best = s;
-								bestDx = dx;
-								bestDy = dy;
+						}
+					}
+					if (m.steady) {
+						// the guess and the places around it that the range did not cover
+						for (int dy = m.guessDy - 1; dy <= m.guessDy + 1; dy++) {
+							for (int dx = m.guessDx - 1; dx <= m.guessDx + 1; dx++) {
+								boolean searched = dx >= minDx && dx <= maxDx && dy >= minDy && dy <= maxDy;
+								boolean inside = x0 + dx >= 0 && x1 + dx <= width && y0 + dy >= 0 && y1 + dy <= height;
+								if (!searched && inside && (dx != 0 || dy != 0)) {
+									consider(m, prev, curr, x0, y0, x1, y1, dx, dy);
+								}
 							}
 						}
 					}
 				}
-				rowBest += best;
+				rowBest += m.best;
 				rowZero += zero;
-				int i = (by * cols + bx) * 2;
 				// curr(x) matches prev(x + d), so the picture moved by -d
-				vectors[i] = -bestDx;
-				vectors[i + 1] = -bestDy;
+				vectors[i] = -m.bestDx;
+				vectors[i + 1] = -m.bestDy;
 			}
 			bestPerRow[by] = rowBest;
 			zeroPerRow[by] = rowZero;

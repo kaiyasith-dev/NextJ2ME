@@ -126,6 +126,8 @@ public final class FrameGenerator {
 	private static final class GrayState {
 		byte[] gray;
 		int frame = -2;
+		/** The motion found into that frame (the guess for the next one), or null. */
+		int[] vectors;
 	}
 
 	private final int mode;
@@ -133,6 +135,8 @@ public final class FrameGenerator {
 	private final boolean cleanEdges;
 	/** Search the motion with the GPU (falls back to the CPU where that can not be built). */
 	private final boolean gpuSearch;
+	/** Offer the motion found into the previous frame as a guess (steady motion). */
+	private final boolean steady;
 	private GpuMotionSearch gpu;
 	/** The frame the GPU last searched the motion into, and whether it was a scene cut. */
 	private int gpuFrame = -1;
@@ -181,11 +185,12 @@ public final class FrameGenerator {
 	private float blockPxY = 1;
 
 	private FrameGenerator(InterpolationProgram program, int mode, boolean linear, boolean multiCore,
-						   boolean cleanEdges, boolean gpuSearch) {
+						   boolean cleanEdges, boolean gpuSearch, boolean steady) {
 		this.program = program;
 		this.mode = mode;
 		this.cleanEdges = cleanEdges;
 		this.gpuSearch = gpuSearch;
+		this.steady = steady;
 		this.parts = multiCore ? searchParts(Runtime.getRuntime().availableProcessors()) : 1;
 		this.linear = linear;
 		// a full-screen quad: clip position then texture position, so the output texture is the
@@ -207,12 +212,15 @@ public final class FrameGenerator {
 	 * @param cleanEdges search the motion both ways too, so edges next to moving objects are taken
 	 *                   from the frame where they can be seen instead of cross-faded (twice the CPU)
 	 * @param gpuSearch  search the motion with the GPU instead of the CPU (where the GPU can)
+	 * @param steady     offer the motion found into the previous frame as a guess, which keeps the
+	 *                   motion from jumping between frames
 	 * @return null if the device can not run the shader, in which case the normal drawing is used
 	 */
 	public static FrameGenerator create(int mode, boolean linear, boolean multiCore,
-										boolean cleanEdges, boolean gpuSearch) {
+										boolean cleanEdges, boolean gpuSearch, boolean steady) {
 		InterpolationProgram p = InterpolationProgram.create();
-		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore, cleanEdges, gpuSearch);
+		return p == null ? null
+				: new FrameGenerator(p, mode, linear, multiCore, cleanEdges, gpuSearch, steady);
 	}
 
 	/**
@@ -445,7 +453,9 @@ public final class FrameGenerator {
 				return;
 			}
 			int prev = (n - 1) % FramePacer.KEPT;
-			gpuSceneCut = gpu.search(prev, frameTex[prev], slot, frameTex[slot], cleanEdges);
+			// the last search's motion is a guess only if it was into the frame before this one
+			boolean usePrevious = steady && gpuFrame == n - 1 && !gpuSceneCut;
+			gpuSceneCut = gpu.search(prev, frameTex[prev], slot, frameTex[slot], cleanEdges, usePrevious);
 			gpuFrame = n;
 		} catch (RuntimeException e) {
 			Log.w(TAG, "the GPU motion search failed: frames are only blended now", e);
@@ -468,15 +478,20 @@ public final class FrameGenerator {
 		final GrayState state = grayState;
 		final int gen = generation;
 		final boolean bothWays = cleanEdges;
+		final boolean useLast = steady;
 		executor.execute(() -> {
 			try {
 				byte[] gray = fine != null ? FineMotionEstimator.toGray(px, w, h)
 						: MotionEstimator.toGray(px, w, h);
 				// a new picture is only grabbed after this job finished, so nothing else reads it
 				Motion found = null;
+				int[] last = null;
 				if (state.gray != null && state.frame == index - 1) {
-					MotionEstimator.Result r = fine != null ? fine.estimate(state.gray, gray, pool, bands)
-							: est.estimate(state.gray, gray, pool, bands);
+					// the motion into the previous frame, if it was worked out: things keep moving
+					int[] guess = useLast ? state.vectors : null;
+					MotionEstimator.Result r = fine != null ? fine.estimate(state.gray, gray, pool, bands, guess)
+							: est.estimate(state.gray, gray, pool, bands, guess);
+					last = r.sceneCut ? null : r.vectors;
 					// the fine vectors are already in the texture's steps; the normal ones are in
 					// half-size pixels, two frame pixels each
 					int scale = fine != null ? 1 : 2;
@@ -492,6 +507,7 @@ public final class FrameGenerator {
 				}
 				state.gray = gray;
 				state.frame = index;
+				state.vectors = last;
 				// also when nothing was found, so the blend does not wait for it
 				motion = found != null ? found
 						: new Motion(gen, index, 0, 0, null, null, false, System.nanoTime());

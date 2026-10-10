@@ -31,6 +31,7 @@ import static android.opengl.GLES20.GL_RGBA;
 import static android.opengl.GLES20.GL_TEXTURE0;
 import static android.opengl.GLES20.GL_TEXTURE1;
 import static android.opengl.GLES20.GL_TEXTURE2;
+import static android.opengl.GLES20.GL_TEXTURE3;
 import static android.opengl.GLES20.GL_TEXTURE_2D;
 import static android.opengl.GLES20.GL_TEXTURE_MAG_FILTER;
 import static android.opengl.GLES20.GL_TEXTURE_MIN_FILTER;
@@ -72,6 +73,7 @@ import static android.opengl.GLES20.glReadPixels;
 import static android.opengl.GLES20.glShaderSource;
 import static android.opengl.GLES20.glTexImage2D;
 import static android.opengl.GLES20.glTexParameteri;
+import static android.opengl.GLES20.glUniform1f;
 import static android.opengl.GLES20.glUniform1i;
 import static android.opengl.GLES20.glUniform2f;
 import static android.opengl.GLES20.glUseProgram;
@@ -196,7 +198,9 @@ final class GpuMotionSearch {
 
 	/**
 	 * Refinement on the full-size frames, one 8x8 block per fragment: the coarse motion of the block's
-	 * place and of the four places around it, and staying put, each refined by a pixel each way, then
+	 * place and of the four places around it, staying put, and (with {@code u_hasPrevious}) the motion
+	 * the block had in the previous frame, each refined by a pixel each way (keeping the previous
+	 * motion only has to fit as well as staying put, not 10% better), then
 	 * to a quarter pixel with a parabola through the neighbouring costs. Output: motion * 4 + 128 in r
 	 * and a, the mean error per pixel in g.
 	 */
@@ -204,6 +208,8 @@ final class GpuMotionSearch {
 			+ "uniform sampler2D u_prev;\n"
 			+ "uniform sampler2D u_curr;\n"
 			+ "uniform sampler2D u_coarse;\n"
+			+ "uniform sampler2D u_previous;\n"
+			+ "uniform float u_hasPrevious;\n"
 			+ "uniform vec2 u_size;\n"
 			+ "uniform vec2 u_grid;\n"
 			+ "uniform vec2 u_coarseGrid;\n"
@@ -230,6 +236,10 @@ final class GpuMotionSearch {
 			+ "    vec2 c = clamp(cell, vec2(0.0), u_coarseGrid - 1.0);\n"
 			+ "    vec4 m = texture2D(u_coarse, (c + 0.5) / u_coarseGrid);\n"
 			+ "    return -floor(vec2(m.r, m.a) * 255.0 - 128.0 + 0.5) * 4.0;\n"
+			+ "}\n"
+			+ "vec2 previousGuess(vec2 cell) {\n"
+			+ "    vec4 m = texture2D(u_previous, (cell + 0.5) / u_grid);\n"
+			+ "    return -floor((vec2(m.r, m.a) * 255.0 - 128.0) / 4.0 + 0.5);\n"
 			+ "}\n"
 			+ "float g_bestCost;\n"
 			+ "float g_best;\n"
@@ -271,13 +281,21 @@ final class GpuMotionSearch {
 			+ "        g_bestD = vec2(0.0);\n"
 			+ "        vec2 cc = floor((g_o + 4.0) / 16.0);\n"
 			+ "        refine(vec2(0.0));\n"
+			+ "        vec2 pg = vec2(0.0);\n"
+			+ "        bool steady = false;\n"
+			+ "        if (u_hasPrevious > 0.5) {\n"
+			+ "            pg = previousGuess(cell);\n"
+			+ "            steady = pg.x != 0.0 || pg.y != 0.0;\n"
+			+ "            if (steady) refine(pg);\n"
+			+ "        }\n"
 			+ "        refine(guess(cc));\n"
 			+ "        refine(guess(cc + vec2(-1.0, 0.0)));\n"
 			+ "        refine(guess(cc + vec2(1.0, 0.0)));\n"
 			+ "        refine(guess(cc + vec2(0.0, -1.0)));\n"
 			+ "        refine(guess(cc + vec2(0.0, 1.0)));\n"
 			+ "        bool moved = g_bestD.x != 0.0 || g_bestD.y != 0.0;\n"
-			+ "        if (!moved || g_best <= zero * 0.9) {\n"
+			+ "        bool kept = steady && abs(g_bestD.x - pg.x) <= 1.0 && abs(g_bestD.y - pg.y) <= 1.0;\n"
+			+ "        if (!moved || g_best <= zero * 0.9 || (kept && g_best <= zero)) {\n"
 			+ "            float fx = subPixel(g_bestD, g_best, vec2(1.0, 0.0));\n"
 			+ "            float fy = subPixel(g_bestD, g_best, vec2(0.0, 1.0));\n"
 			+ "            v = -floor((g_bestD + vec2(fx, fy)) * 4.0 + 0.5);\n"
@@ -377,7 +395,9 @@ final class GpuMotionSearch {
 	private int coarseTex;
 	private int coarseMedianTex;
 	private int refinedTex;
-	private int forwardTex;
+	/** Two textures in turn: the newest motion, and the one before it (the guess for the next). */
+	private final int[] forwardTex = new int[2];
+	private int current;
 	private int backwardTex;
 	private int errorTex;
 	private int fbo;
@@ -437,7 +457,7 @@ final class GpuMotionSearch {
 		if (quarter == null || coarse == null || refine == null || median == null || error == null) {
 			return false;
 		}
-		int[] ids = new int[FramePacer.KEPT + 6];
+		int[] ids = new int[FramePacer.KEPT + 7];
 		glGenTextures(ids.length, ids, 0);
 		for (int i = 0; i < FramePacer.KEPT; i++) {
 			quarterTex[i] = texture(ids[i], quarterWidth, quarterHeight);
@@ -445,9 +465,10 @@ final class GpuMotionSearch {
 		coarseTex = texture(ids[3], coarseCols, coarseRows);
 		coarseMedianTex = texture(ids[4], coarseCols, coarseRows);
 		refinedTex = texture(ids[5], cols, rows);
-		forwardTex = texture(ids[6], cols, rows);
-		backwardTex = texture(ids[7], cols, rows);
-		errorTex = texture(ids[8], 1, 1);
+		forwardTex[0] = texture(ids[6], cols, rows);
+		forwardTex[1] = texture(ids[7], cols, rows);
+		backwardTex = texture(ids[8], cols, rows);
+		errorTex = texture(ids[9], 1, 1);
 		int[] fb = new int[1];
 		glGenFramebuffers(1, fb, 0);
 		fbo = fb[0];
@@ -524,7 +545,7 @@ final class GpuMotionSearch {
 
 	/** The motion from the previous to the newest frame, as of the last {@link #search}. */
 	int forwardTexture() {
-		return forwardTex;
+		return forwardTex[current];
 	}
 
 	/** The motion from the newest to the previous frame (only after a search both ways). */
@@ -562,13 +583,21 @@ final class GpuMotionSearch {
 	 * added with {@link #addFrame}), into {@link #forwardTexture()}; with {@code bothWays} also back
 	 * into {@link #backwardTexture()}.
 	 *
+	 * @param usePrevious offer the motion of the last search as a guess (when it was into the
+	 *                    previous frame: steady motion)
 	 * @return whether the two frames have nothing in common (a scene cut: do not interpolate)
 	 */
-	boolean search(int prevSlot, int prevTexture, int currSlot, int currTexture, boolean bothWays) {
+	boolean search(int prevSlot, int prevTexture, int currSlot, int currTexture, boolean bothWays,
+				   boolean usePrevious) {
 		boolean dither = noDither();
-		boolean cut = searchOneWay(prevSlot, prevTexture, currSlot, currTexture, forwardTex, true);
+		int previous = usePrevious ? forwardTex[current] : 0;
+		boolean cut = searchOneWay(prevSlot, prevTexture, currSlot, currTexture, forwardTex[1 - current],
+				true, previous);
+		if (!cut) {
+			current = 1 - current;
+		}
 		if (bothWays && !cut) {
-			searchOneWay(currSlot, currTexture, prevSlot, prevTexture, backwardTex, false);
+			searchOneWay(currSlot, currTexture, prevSlot, prevTexture, backwardTex, false, 0);
 		}
 		glActiveTexture(GL_TEXTURE0);
 		restoreDither(dither);
@@ -576,7 +605,7 @@ final class GpuMotionSearch {
 	}
 
 	private boolean searchOneWay(int fromSlot, int fromTexture, int toSlot, int toTexture, int target,
-								 boolean measure) {
+								 boolean measure, int previous) {
 		// coarse search on the quarter-size frames
 		begin(coarse, coarseTex, coarseCols, coarseRows);
 		bind(0, quarterTex[fromSlot], coarse.uniform("u_prev"));
@@ -604,6 +633,8 @@ final class GpuMotionSearch {
 		bind(0, fromTexture, refine.uniform("u_prev"));
 		bind(1, toTexture, refine.uniform("u_curr"));
 		bind(2, coarseMedianTex, refine.uniform("u_coarse"));
+		bind(3, previous != 0 ? previous : coarseMedianTex, refine.uniform("u_previous"));
+		glUniform1f(refine.uniform("u_hasPrevious"), previous != 0 ? 1f : 0f);
 		glUniform2f(refine.uniform("u_size"), width, height);
 		glUniform2f(refine.uniform("u_grid"), cols, rows);
 		glUniform2f(refine.uniform("u_coarseGrid"), coarseCols, coarseRows);
@@ -634,7 +665,7 @@ final class GpuMotionSearch {
 	}
 
 	private static void bind(int unit, int texture, int uniform) {
-		glActiveTexture(unit == 0 ? GL_TEXTURE0 : unit == 1 ? GL_TEXTURE1 : GL_TEXTURE2);
+		glActiveTexture(GL_TEXTURE0 + unit);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glUniform1i(uniform, unit);
 	}
@@ -644,7 +675,7 @@ final class GpuMotionSearch {
 		glDisableVertexAttribArray(pass.aPosition);
 		glDisableVertexAttribArray(pass.aUv);
 		// the targets are read by later passes: none may stay bound where a pass draws
-		for (int unit : new int[]{GL_TEXTURE2, GL_TEXTURE1, GL_TEXTURE0}) {
+		for (int unit : new int[]{GL_TEXTURE3, GL_TEXTURE2, GL_TEXTURE1, GL_TEXTURE0}) {
 			glActiveTexture(unit);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
@@ -657,7 +688,7 @@ final class GpuMotionSearch {
 	int[] readVectors(boolean backward) {
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-				backward ? backwardTex : forwardTex, 0);
+				backward ? backwardTex : forwardTex[current], 0);
 		ByteBuffer buf = ByteBuffer.allocateDirect(cols * rows * 4).order(ByteOrder.nativeOrder());
 		glReadPixels(0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, buf);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -678,7 +709,7 @@ final class GpuMotionSearch {
 		}
 		quarter = coarse = refine = median = error = null;
 		int[] textures = {quarterTex[0], quarterTex[1], quarterTex[2], coarseTex, coarseMedianTex,
-				refinedTex, forwardTex, backwardTex, errorTex};
+				refinedTex, forwardTex[0], forwardTex[1], backwardTex, errorTex};
 		glDeleteTextures(textures.length, textures, 0);
 		if (fbo != 0) {
 			glDeleteFramebuffers(1, new int[]{fbo}, 0);

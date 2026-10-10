@@ -130,11 +130,15 @@ public class GpuMotionSearchTest {
 
 	/** Runs the search from {@code prev} to {@code curr}; returns the vectors (and the scene cut). */
 	private int[] search(GpuMotionSearch s, byte[] prev, byte[] curr, boolean[] cut) {
+		return search(s, prev, curr, cut, false);
+	}
+
+	private int[] search(GpuMotionSearch s, byte[] prev, byte[] curr, boolean[] cut, boolean usePrevious) {
 		int a = texture(prev, W, H);
 		int b = texture(curr, W, H);
 		s.addFrame(0, a);
 		s.addFrame(1, b);
-		boolean c = s.search(0, a, 1, b, true);
+		boolean c = s.search(0, a, 1, b, true, usePrevious);
 		if (cut != null) {
 			cut[0] = c;
 		}
@@ -255,6 +259,43 @@ public class GpuMotionSearchTest {
 		s.release();
 	}
 
+	/**
+	 * Smooth vertical waves repeating every {@code period} pixels, moved by {@code mx}: every block
+	 * has detail, but the picture repeats, so several motions fit it exactly.
+	 */
+	private static byte[] stripes(int period, double mx) {
+		byte[] out = new byte[W * H];
+		for (int y = 0; y < H; y++) {
+			for (int x = 0; x < W; x++) {
+				double v = 128 + 100 * Math.sin(2 * Math.PI * (x - mx) / period);
+				out[y * W + x] = (byte) Math.round(v);
+			}
+		}
+		return out;
+	}
+
+	@Test
+	public void repeatingStripesKeepTheMotionTheyHad() {
+		// stripes 32 pixels apart moving 24: moving 8 back fits just as well and is shorter
+		GpuMotionSearch s = GpuMotionSearch.create(W, H);
+		int[] alone = middle(search(s, stripes(32, 0), stripes(32, 24), null, false), s.cols(), s.rows());
+		assertEquals("without the last motion the short way wins", -8 * U, alone[0], 2);
+		// a picture without repeats moving 24 first, so the last motion is known
+		search(s, gray(W, H, 0, 0), gray(W, H, 24, 0), null, false);
+		int[] kept = middle(search(s, stripes(32, 0), stripes(32, 24), null, true), s.cols(), s.rows());
+		assertEquals("with the last motion they keep it", 24 * U, kept[0], 2);
+		s.release();
+	}
+
+	@Test
+	public void withoutTheLastMotionNothingChanges() {
+		GpuMotionSearch s = GpuMotionSearch.create(W, H);
+		int[] first = search(s, gray(W, H, 0, 0), gray(W, H, 5.5, -2.25), null, false);
+		int[] again = search(s, gray(W, H, 0, 0), gray(W, H, 5.5, -2.25), null, false);
+		org.junit.Assert.assertArrayEquals(first, again);
+		s.release();
+	}
+
 	@Test
 	public void howLongASearchTakes() {
 		for (int[] size : new int[][]{{240, 320}, {480, 800}}) {
@@ -263,12 +304,12 @@ public class GpuMotionSearchTest {
 			int b = texture(gray(size[0], size[1], 7, 3), size[0], size[1]);
 			s.addFrame(0, a);
 			s.addFrame(1, b);
-			s.search(0, a, 1, b, false);
+			s.search(0, a, 1, b, false, false);
 			GLES20.glFinish();
 			int runs = 10;
 			long start = System.nanoTime();
 			for (int i = 0; i < runs; i++) {
-				s.search(0, a, 1, b, false);
+				s.search(0, a, 1, b, false, false);
 			}
 			GLES20.glFinish();
 			long ms = (System.nanoTime() - start) / runs / 1_000_000L;
