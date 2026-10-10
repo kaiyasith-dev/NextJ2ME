@@ -17,6 +17,7 @@
 package javax.microedition.lcdui.graphics;
 
 import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
 
 /**
  * The high-quality motion search of frame generation: finer, faster-moving and more precise than
@@ -92,14 +93,30 @@ public final class FineMotionEstimator {
 
 	/** The motion from {@code prev} to {@code curr}, both full-size grey images, in quarter pixels. */
 	public MotionEstimator.Result estimate(byte[] prev, byte[] curr) {
-		MotionEstimator.Result rough = coarse.estimate(quarter(prev), quarter(curr));
+		return estimate(prev, curr, null, 1);
+	}
+
+	/**
+	 * Like {@link #estimate(byte[], byte[])}, with the rows of blocks of both searches shared out
+	 * between this thread and {@code helpers} in up to {@code parts} bands. The result is the same.
+	 */
+	public MotionEstimator.Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts) {
+		MotionEstimator.Result rough = coarse.estimate(quarter(prev), quarter(curr), helpers, parts);
 		int[] vectors = new int[cols * rows * 2];
 		if (rough.sceneCut) {
 			return new MotionEstimator.Result(cols, rows, vectors, true, rough.meanError);
 		}
+		RowBands.run(rows, helpers, parts, (from, to) -> refine(prev, curr, rough, from, to, vectors));
+		median(vectors);
+		return new MotionEstimator.Result(cols, rows, vectors, false, rough.meanError);
+	}
+
+	/** Refines the blocks of rows {@code fromRow} to {@code toRow}; touches only those rows' entries. */
+	private void refine(byte[] prev, byte[] curr, MotionEstimator.Result rough, int fromRow, int toRow,
+						int[] vectors) {
 		int[] guessX = new int[6];
 		int[] guessY = new int[6];
-		for (int by = 0; by < rows; by++) {
+		for (int by = fromRow; by < toRow; by++) {
 			for (int bx = 0; bx < cols; bx++) {
 				int x0 = bx * BLOCK;
 				int y0 = by * BLOCK;
@@ -173,8 +190,6 @@ public final class FineMotionEstimator {
 				vectors[i + 1] = -Math.round((bestDy + fy) * UNITS_PER_PIXEL);
 			}
 		}
-		median(vectors);
-		return new MotionEstimator.Result(cols, rows, vectors, false, rough.meanError);
 	}
 
 	/** Offset (-0.5 to 0.5) of the true best match from the whole pixel (dx, dy), along (ux, uy). */

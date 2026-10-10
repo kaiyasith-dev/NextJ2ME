@@ -180,6 +180,9 @@
     <string name="pref_frame_generation_blend">Blend (smooth, cheap)</string>
     <string name="pref_frame_generation_motion">Motion (smoother, heavier)</string>
     <string name="pref_frame_generation_motion_hq">Motion HQ (smoothest, heaviest)</string>
+    <string name="pref_frame_generation_multi_core">Use several CPU cores for motion</string>
+    <string name="pref_frame_generation_fps_title">Frame generation rate:</string>
+    <string name="pref_frame_generation_fps_screen">Screen refresh rate</string>
     <string name="PREF_FONT_ANTI_ALIASING">Anti-Aliasing</string>
     <string name="pref_screen_gravity">Screen gravity</string>
     <string name="pref_screen_gravity_bottom">Bottom</string>

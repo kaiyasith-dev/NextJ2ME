@@ -156,6 +156,10 @@ public final class FrameGenerator {
 	private boolean wideSearch;
 	private int[] pixels;
 	private ExecutorService worker;
+	/** Threads that share the motion search with the worker; null on a phone with few cores. */
+	private ExecutorService helpers;
+	/** Into how many bands the motion search is split (1 = the worker alone). */
+	private final int parts;
 	private volatile Motion motion;
 	private int uploadedMotion = -1;
 	private int gridCols = 1;
@@ -163,9 +167,10 @@ public final class FrameGenerator {
 	private float blockPxX = 1;
 	private float blockPxY = 1;
 
-	private FrameGenerator(InterpolationProgram program, int mode, boolean linear) {
+	private FrameGenerator(InterpolationProgram program, int mode, boolean linear, boolean multiCore) {
 		this.program = program;
 		this.mode = mode;
+		this.parts = multiCore ? searchParts(Runtime.getRuntime().availableProcessors()) : 1;
 		this.linear = linear;
 		// a full-screen quad: clip position then texture position, so the output texture is the
 		// same picture as the input textures
@@ -180,13 +185,14 @@ public final class FrameGenerator {
 	/**
 	 * Creates the generator on the GL thread.
 	 *
-	 * @param mode   {@link #MODE_BLEND}, {@link #MODE_MOTION} or {@link #MODE_MOTION_HQ}
-	 * @param linear filter the textures smoothly (the screen's filtering setting)
+	 * @param mode      {@link #MODE_BLEND}, {@link #MODE_MOTION} or {@link #MODE_MOTION_HQ}
+	 * @param linear    filter the textures smoothly (the screen's filtering setting)
+	 * @param multiCore  let the motion search use several CPU cores (the same result, sooner)
 	 * @return null if the device can not run the shader, in which case the normal drawing is used
 	 */
-	public static FrameGenerator create(int mode, boolean linear) {
+	public static FrameGenerator create(int mode, boolean linear, boolean multiCore) {
 		InterpolationProgram p = InterpolationProgram.create();
-		return p == null ? null : new FrameGenerator(p, mode, linear);
+		return p == null ? null : new FrameGenerator(p, mode, linear, multiCore);
 	}
 
 	/**
@@ -227,19 +233,13 @@ public final class FrameGenerator {
 	 * makes no GL calls, since its texture and program numbers may now belong to the new context.
 	 */
 	public void abandon() {
-		if (worker != null) {
-			worker.shutdownNow();
-			worker = null;
-		}
+		stopThreads();
 		allocated = false;
 	}
 
 	/** Frees the textures and the framebuffer, and stops the worker. */
 	private void releaseBuffers() {
-		if (worker != null) {
-			worker.shutdownNow();
-			worker = null;
-		}
+		stopThreads();
 		if (allocated) {
 			try {
 				glDeleteTextures(5, new int[]{frameTex[0], frameTex[1], frameTex[2], texMotion, texOut}, 0);
@@ -249,6 +249,25 @@ public final class FrameGenerator {
 			}
 			allocated = false;
 		}
+	}
+
+	private void stopThreads() {
+		if (worker != null) {
+			worker.shutdownNow();
+			worker = null;
+		}
+		if (helpers != null) {
+			helpers.shutdownNow();
+			helpers = null;
+		}
+	}
+
+	/**
+	 * Into how many bands to split the motion search on a phone with {@code cores} cores: half of
+	 * them, at most four, so the game, the screen and the rest of the phone keep cores of their own.
+	 */
+	static int searchParts(int cores) {
+		return Math.max(1, Math.min(4, cores / 2));
 	}
 
 	// ------------------------------------------------------------------ setup
@@ -319,6 +338,13 @@ public final class FrameGenerator {
 				t.setDaemon(true);
 				return t;
 			});
+			if (parts > 1) {
+				helpers = Executors.newFixedThreadPool(parts - 1, r -> {
+					Thread t = new Thread(r, "FrameGenMotionHelper");
+					t.setDaemon(true);
+					return t;
+				});
+			}
 			busy.set(false);
 		}
 		pacer = new FramePacer(worker != null);
@@ -368,6 +394,8 @@ public final class FrameGenerator {
 		final MotionEstimator est = estimator;
 		final FineMotionEstimator fine = fineEstimator;
 		final ExecutorService executor = worker;
+		final ExecutorService pool = helpers;
+		final int bands = parts;
 		final GrayState state = grayState;
 		final int gen = generation;
 		executor.execute(() -> {
@@ -377,8 +405,8 @@ public final class FrameGenerator {
 				// a new picture is only grabbed after this job finished, so nothing else reads it
 				Motion found = null;
 				if (state.gray != null && state.frame == index - 1) {
-					MotionEstimator.Result r = fine != null ? fine.estimate(state.gray, gray)
-							: est.estimate(state.gray, gray);
+					MotionEstimator.Result r = fine != null ? fine.estimate(state.gray, gray, pool, bands)
+							: est.estimate(state.gray, gray, pool, bands);
 					// the fine vectors are already in the texture's steps; the normal ones are in
 					// half-size pixels, two frame pixels each
 					found = new Motion(gen, index, r.cols, r.rows, r.encode(fine != null ? 1 : 2),
@@ -389,6 +417,8 @@ public final class FrameGenerator {
 				// also when nothing was found, so the blend does not wait for it
 				motion = found != null ? found
 						: new Motion(gen, index, 0, 0, null, false, System.nanoTime());
+			} catch (java.util.concurrent.CancellationException e) {
+				// the generator is shutting down
 			} catch (RuntimeException e) {
 				Log.w(TAG, "motion estimation failed", e);
 			} finally {

@@ -17,6 +17,7 @@
 package javax.microedition.lcdui.graphics;
 
 import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Finds how the picture moved between two game frames, block by block, for frame generation.
@@ -123,10 +124,41 @@ public final class MotionEstimator {
 
 	/** The motion from {@code prev} to {@code curr}; both are {@code width x height} grey images. */
 	public Result estimate(byte[] prev, byte[] curr) {
+		return estimate(prev, curr, null, 1);
+	}
+
+	/**
+	 * Like {@link #estimate(byte[], byte[])}, with the rows of blocks shared out between this thread
+	 * and {@code helpers} in up to {@code parts} bands. The result is the same.
+	 */
+	public Result estimate(byte[] prev, byte[] curr, ExecutorService helpers, int parts) {
 		int[] vectors = new int[cols * rows * 2];
+		long[] bestPerRow = new long[rows];
+		long[] zeroPerRow = new long[rows];
+		RowBands.run(rows, helpers, parts, (from, to) -> search(prev, curr, from, to, vectors, bestPerRow, zeroPerRow));
 		long totalBest = 0;
 		long totalZero = 0;
 		for (int by = 0; by < rows; by++) {
+			totalBest += bestPerRow[by];
+			totalZero += zeroPerRow[by];
+		}
+		float pixels = (float) width * height;
+		float meanError = totalBest / pixels;
+		boolean sceneCut = meanError > SCENE_CUT_ERROR;
+		if (totalZero / pixels < 1.0f) {
+			Arrays.fill(vectors, 0); // nothing moved
+		} else {
+			median(vectors);
+		}
+		return new Result(cols, rows, vectors, sceneCut, meanError);
+	}
+
+	/** Searches the blocks of rows {@code fromRow} to {@code toRow}; touches only those rows' entries. */
+	private void search(byte[] prev, byte[] curr, int fromRow, int toRow, int[] vectors,
+						long[] bestPerRow, long[] zeroPerRow) {
+		for (int by = fromRow; by < toRow; by++) {
+			long rowBest = 0;
+			long rowZero = 0;
 			for (int bx = 0; bx < cols; bx++) {
 				int x0 = bx * block;
 				int y0 = by * block;
@@ -163,23 +195,16 @@ public final class MotionEstimator {
 						}
 					}
 				}
-				totalBest += best;
-				totalZero += zero;
+				rowBest += best;
+				rowZero += zero;
 				int i = (by * cols + bx) * 2;
 				// curr(x) matches prev(x + d), so the picture moved by -d
 				vectors[i] = -bestDx;
 				vectors[i + 1] = -bestDy;
 			}
+			bestPerRow[by] = rowBest;
+			zeroPerRow[by] = rowZero;
 		}
-		float pixels = (float) width * height;
-		float meanError = totalBest / pixels;
-		boolean sceneCut = meanError > SCENE_CUT_ERROR;
-		if (totalZero / pixels < 1.0f) {
-			Arrays.fill(vectors, 0); // nothing moved
-		} else {
-			median(vectors);
-		}
-		return new Result(cols, rows, vectors, sceneCut, meanError);
 	}
 
 	/**

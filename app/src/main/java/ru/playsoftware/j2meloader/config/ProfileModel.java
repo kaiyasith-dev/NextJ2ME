@@ -96,6 +96,14 @@ public class ProfileModel {
 	@SerializedName("FrameGeneration")
 	public int frameGeneration;
 
+	/** Whether the motion search of frame generation may use several CPU cores (same result, faster). */
+	@SerializedName("FrameGenerationMultiCore")
+	public boolean frameGenerationMultiCore = true;
+
+	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
+	@SerializedName("FrameGenerationFps")
+	public int frameGenerationFps;
+
 	/** Resolution of Mascot Capsule 3D scenes: 0 = normal, 1 = 2x, 2 = 3x (rendered larger, then averaged down). */
 	@SerializedName("Render3dQuality")
 	public int render3dQuality;

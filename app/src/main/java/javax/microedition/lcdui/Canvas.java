@@ -67,6 +67,7 @@ import javax.microedition.lcdui.graphics.CanvasView;
 import javax.microedition.lcdui.graphics.CanvasWrapper;
 import javax.microedition.lcdui.graphics.GlesView;
 import javax.microedition.lcdui.graphics.FrameGenerator;
+import javax.microedition.lcdui.graphics.FrameRateDriver;
 import javax.microedition.lcdui.graphics.ShaderProgram;
 import javax.microedition.lcdui.keyboard.KeyMapper;
 import javax.microedition.lcdui.keyboard.VirtualKeyboard;
@@ -133,6 +134,9 @@ public abstract class Canvas extends Displayable {
 	private static int scaleRatio;
 	private static int fpsLimit;
 	private static int frameGeneration;
+	private static boolean frameGenerationMultiCore = true;
+	/** Pictures per second frame generation shows; 0 = on every screen refresh. */
+	private static int frameGenerationFps;
 	/**
 	 * Without a new game frame for this long, frame generation stops redrawing on every refresh. It
 	 * is longer than the longest frame time the blend follows (250 ms), so the newest frame is
@@ -240,6 +244,19 @@ public abstract class Canvas extends Displayable {
 	 */
 	public static void setFrameGeneration(int mode) {
 		Canvas.frameGeneration = mode;
+	}
+
+	/** Whether the motion search of frame generation may use several CPU cores. */
+	public static void setFrameGenerationMultiCore(boolean multiCore) {
+		Canvas.frameGenerationMultiCore = multiCore;
+	}
+
+	/**
+	 * Pictures per second frame generation shows; 0 = on every screen refresh. Rates below 60 are
+	 * not offered, so they draw on every refresh too.
+	 */
+	public static void setFrameGenerationFps(int fps) {
+		Canvas.frameGenerationFps = fps < 60 ? 0 : fps;
 	}
 
 	public static void setScreenshotRawMode(boolean enable) {
@@ -548,8 +565,15 @@ public abstract class Canvas extends Displayable {
 			if (graphicsMode == 1) {
 				GlesView glesView = new GlesView(activity);
 				glesView.setRenderer(renderer);
-				glesView.setRenderMode(frameGeneration != 0 ? GLSurfaceView.RENDERMODE_CONTINUOUSLY
-						: GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+				// at a chosen rate the driver asks for each picture; otherwise every refresh draws
+				FrameRateDriver driver = frameGeneration == 0 ? null
+						: FrameRateDriver.create(glesView, frameGenerationFps);
+				if (driver != null) {
+					driver.requestScreenRate(activity);
+					renderer.setFrameRateDriver(driver);
+				}
+				glesView.setRenderMode(frameGeneration != 0 && driver == null
+						? GLSurfaceView.RENDERMODE_CONTINUOUSLY : GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 				renderer.setView(glesView);
 				innerView = glesView;
 			} else {
@@ -799,6 +823,8 @@ public abstract class Canvas extends Displayable {
 		private FrameGenerator frameGenerator;
 		/** Whether the view redraws on every screen refresh (only touched on the GL thread). */
 		private boolean redrawEveryRefresh;
+		/** Asks for pictures at the chosen rate instead; null when drawing on every refresh. */
+		private FrameRateDriver frameRateDriver;
 		private final AtomicInteger frameCounter = new AtomicInteger();
 		private volatile long frameNanos;
 		private int surfaceWidth;
@@ -823,7 +849,8 @@ public abstract class Canvas extends Displayable {
 				// a new GL context: the old generator's GL objects went with the old one
 				frameGenerator.abandon();
 			}
-			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration, filter);
+			frameGenerator = frameGeneration == 0 ? null : FrameGenerator.create(frameGeneration, filter,
+					frameGenerationMultiCore);
 			if (frameGeneration != 0 && frameGenerator == null) {
 				stopFrameGeneration("the device could not build the frame generation shader");
 			} else if (frameGenerator != null) {
@@ -905,9 +932,17 @@ public abstract class Canvas extends Displayable {
 			setRedrawEveryRefresh(false);
 		}
 
-		/** Redraw on every screen refresh, or only when the game finishes a frame. */
+		/**
+		 * Redraw on every screen refresh (or at the chosen rate), or only when the game finishes a
+		 * frame.
+		 */
 		private void setRedrawEveryRefresh(boolean every) {
 			redrawEveryRefresh = every;
+			if (frameRateDriver != null) {
+				// the view only draws when asked; the driver asks at the chosen rate
+				frameRateDriver.setWanted(every);
+				return;
+			}
 			if (mView != null) {
 				mView.setRenderMode(every ? GLSurfaceView.RENDERMODE_CONTINUOUSLY
 						: GLSurfaceView.RENDERMODE_WHEN_DIRTY);
@@ -951,6 +986,10 @@ public abstract class Canvas extends Displayable {
 				// the game finished a frame: the generator picks it up on the next screen refresh
 				frameNanos = System.nanoTime();
 				frameCounter.incrementAndGet();
+				if (frameRateDriver != null && frameRateDriver.isRunning()) {
+					// the pictures come at the chosen rate; an extra one now would break the rhythm
+					return;
+				}
 			}
 			mView.requestRender();
 		}
@@ -959,13 +998,23 @@ public abstract class Canvas extends Displayable {
 			this.mView = mView;
 		}
 
+		void setFrameRateDriver(FrameRateDriver driver) {
+			this.frameRateDriver = driver;
+		}
+
 		public void stop() {
 			isStarted = false;
+			if (frameRateDriver != null) {
+				frameRateDriver.setPaused(true);
+			}
 			mView.onPause();
 		}
 
 		public void start() {
 			mView.onResume();
+			if (frameRateDriver != null) {
+				frameRateDriver.setPaused(false);
+			}
 		}
 
 		private Single<Bitmap> takeScreenShot() {

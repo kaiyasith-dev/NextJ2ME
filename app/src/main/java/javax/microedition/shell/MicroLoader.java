@@ -283,6 +283,8 @@ public class MicroLoader {
 			Canvas.setShowFps(params.showFps);
 			Canvas.setLimitFps(params.fpsLimit);
 			Canvas.setFrameGeneration(params.graphicsMode == 1 ? params.frameGeneration : 0);
+			Canvas.setFrameGenerationMultiCore(params.frameGenerationMultiCore);
+			Canvas.setFrameGenerationFps(params.frameGenerationFps);
 			Render3DSettings.setSupersampling(params.render3dQuality > 0 ? params.render3dQuality + 1 : 1);
 
 			Font.applySettings(params);

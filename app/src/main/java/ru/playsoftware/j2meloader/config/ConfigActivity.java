@@ -225,10 +225,7 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		binding.graphicalModeSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-				// frame generation draws through OpenGL ES only
-				int frameGenerationVisibility = position == 1 ? View.VISIBLE : View.GONE;
-				binding.frameGenerationHint.setVisibility(frameGenerationVisibility);
-				binding.frameGenerationSelector.setVisibility(frameGenerationVisibility);
+				updateFrameGenerationRows();
 				switch (position) {
 					case 0:
 					case 3:
@@ -243,6 +240,16 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 						binding.parallelScreenRedrawingToggle.setVisibility(View.GONE);
 						binding.shaderRoot.setVisibility(View.GONE);
 				}
+			}
+
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+			}
+		});
+		binding.frameGenerationSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+				updateFrameGenerationRows();
 			}
 
 			@Override
@@ -328,6 +335,33 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		if (params == null) {
 			params = new ProfileModel(configDir);
 		}
+	}
+
+	/**
+	 * Frame generation draws through OpenGL ES only, and only the motion modes search for motion
+	 * (which the multi-core switch is about).
+	 */
+	private void updateFrameGenerationRows() {
+		boolean gles = binding.graphicalModeSelector.getSelectedItemPosition() == 1;
+		boolean on = binding.frameGenerationSelector.getSelectedItemPosition() >= 1;
+		boolean motion = binding.frameGenerationSelector.getSelectedItemPosition() >= 2;
+		binding.frameGenerationHint.setVisibility(gles ? View.VISIBLE : View.GONE);
+		binding.frameGenerationSelector.setVisibility(gles ? View.VISIBLE : View.GONE);
+		binding.frameGenerationFpsHint.setVisibility(gles && on ? View.VISIBLE : View.GONE);
+		binding.frameGenerationFpsSelector.setVisibility(gles && on ? View.VISIBLE : View.GONE);
+		binding.frameGenerationMultiCoreToggle.setVisibility(gles && motion ? View.VISIBLE : View.GONE);
+	}
+
+	/** The rates of the frame generation rate list, in its order; 0 = the screen's refresh rate. */
+	private static final int[] FRAME_GENERATION_FPS = {0, 60, 90, 120};
+
+	private static int frameGenerationFpsPosition(int fps) {
+		for (int i = 0; i < FRAME_GENERATION_FPS.length; i++) {
+			if (FRAME_GENERATION_FPS[i] == fps) {
+				return i;
+			}
+		}
+		return 0;
 	}
 
 	private void showShaderSettings(View v) {
@@ -601,6 +635,8 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 		int fpsLimit = params.fpsLimit;
 		binding.fpsLimit.setText(fpsLimit > 0 ? Integer.toString(fpsLimit) : "");
 		binding.frameGenerationSelector.setSelection(params.frameGeneration);
+		binding.frameGenerationMultiCoreToggle.setChecked(params.frameGenerationMultiCore);
+		binding.frameGenerationFpsSelector.setSelection(frameGenerationFpsPosition(params.frameGenerationFps));
 		binding.render3dQualitySelector.setSelection(params.render3dQuality);
 
 		binding.buttonsLayoutSelector.setSelection(params.keyCodesLayout);
@@ -656,6 +692,9 @@ public class ConfigActivity extends BaseActivity implements View.OnClickListener
 			params.showFps = binding.showFpsToggle.isChecked();
 			params.fpsLimit = parseInt(binding.fpsLimit.getText().toString());
 		params.frameGeneration = mode == 1 ? binding.frameGenerationSelector.getSelectedItemPosition() : 0;
+		params.frameGenerationMultiCore = binding.frameGenerationMultiCoreToggle.isChecked();
+		params.frameGenerationFps = FRAME_GENERATION_FPS[Math.max(0,
+				binding.frameGenerationFpsSelector.getSelectedItemPosition())];
 		params.render3dQuality = binding.render3dQualitySelector.getSelectedItemPosition();
 
 			try {

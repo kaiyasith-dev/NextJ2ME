@@ -57,6 +57,13 @@
         <item>@string/pref_frame_generation_motion</item>
         <item>@string/pref_frame_generation_motion_hq</item>
     </string-array>
+    <!-- in the order of ConfigActivity.FRAME_GENERATION_FPS -->
+    <string-array name="pref_frame_generation_fps_entries">
+        <item>@string/pref_frame_generation_fps_screen</item>
+        <item>60 fps</item>
+        <item>90 fps</item>
+        <item>120 fps</item>
+    </string-array>
     <string-array name="pref_render_3d_entries">
         <item>@string/pref_render_3d_normal</item>
         <item>@string/pref_render_3d_2x</item>
